@@ -1,3 +1,8 @@
+# Large files (>100MB)
+banking_data.db
+data_processor/datasets/indclients.csv
+data_processor/datasets/corpclients.csv
+
 # Data directories
 data_processor/datasets/
 data_processor/models/
@@ -5,7 +10,6 @@ data_processor/flask_session/
 
 # Database files
 *.db
-banking_data.db
 
 # Environment files
 .env
