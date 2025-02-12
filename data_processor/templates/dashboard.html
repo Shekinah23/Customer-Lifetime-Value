@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLV ANALYTICS - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --navy-blue: #000080;
+            --gold: #FFD700;
+            --white: #FFFFFF;
+        }
+        .glass-header {
+            background: rgba(0, 0, 128, 0.9);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .metric-card {
+            background: var(--white);
+            border: 1px solid var(--navy-blue);
+            transition: all 0.3s ease;
+        }
+        .metric-card:hover {
+            border-color: var(--gold);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 128, 0.1);
+        }
+        .chart-card {
+            background: var(--white);
+            border: 1px solid var(--navy-blue);
+        }
+        .trend-up {
+            color: #10B981;
+        }
+        .trend-down {
+            color: #EF4444;
+        }
+    </style>
+</head>
+<body class="bg-white">
+    <!-- Header -->
+    <header class="glass-header shadow fixed w-full z-50">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Logo" class="h-12 w-auto mr-3" style="min-width: 48px;">
+                    <h1 class="text-2xl font-bold" style="color: var(--gold);">CLV Analytics</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="/landing" class="text-white hover:text-[#FFD700]">Home</a>
+                    <button onclick="logout()" class="text-white hover:text-[#FFD700]">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="pt-20 px-4">
+        <div class="max-w-7xl mx-auto">
+            <!-- Primary Metrics Row -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <!-- CLV Metrics -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Average CLV</h3>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(metrics.avg_clv) }}</p>
+                    <p class="text-sm mt-1 text-gray-600">Per customer value</p>
+                    <div class="mt-2 flex items-center">
+                        <span class="{{ 'trend-up' if metrics.clv_trend == 'Upward' else 'trend-down' }} text-sm font-medium">
+                            {{ metrics.clv_trend }} Trend
+                        </span>
+                    </div>
+                </div>
+
+                <!-- CAC and Ratio -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">CLV:CAC Ratio</h3>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ "{:.1f}".format(metrics.clv_cac_ratio) }}x</p>
+                    <p class="text-sm mt-1 text-gray-600">Return on acquisition</p>
+                    <div class="mt-2">
+                        <span class="text-sm text-gray-600">{{ metrics.cac_breakdown }}</span>
+                    </div>
+                </div>
+
+                <!-- Churn Metrics -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Churn Rate</h3>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ "{:.1f}%".format(metrics.churn_rate) }}</p>
+                    <p class="text-sm mt-1 text-gray-600">Current period</p>
+                    <div class="mt-2">
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full 
+                            {{ 'bg-green-100 text-green-800' if metrics.churn_prediction == 'Low Risk' else 
+                               'bg-yellow-100 text-yellow-800' if metrics.churn_prediction == 'Medium Risk' else 
+                               'bg-red-100 text-red-800' }}">
+                            {{ metrics.churn_prediction }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secondary Metrics -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <!-- Revenue Metrics -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Revenue per Customer</h3>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(metrics.revenue_per_customer) }}</p>
+                    <p class="text-sm mt-1 text-gray-600">Average monthly</p>
+                    <div class="mt-2">
+                        <span class="text-sm text-gray-600">{{ "{:.1f}%".format(metrics.predicted_growth) }}% Growth Expected</span>
+                    </div>
+                </div>
+
+                <!-- Retention Metrics -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Retention Rate</h3>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ "{:.1f}%".format(metrics.retention_rate) }}</p>
+                    <p class="text-sm mt-1 text-gray-600">Customer loyalty</p>
+                    <div class="mt-2">
+                        <span class="text-sm text-gray-600">Based on 12-month data</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <!-- Customer Segments -->
+                <div class="chart-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Customer Segments</h3>
+                    <div class="relative h-64">
+                        <canvas id="customerSegmentsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Revenue Trends -->
+                <div class="chart-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Revenue Trends</h3>
+                    <div class="relative h-64">
+                        <canvas id="revenueTrendsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Analysis -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- CLV by Channel -->
+                <div class="chart-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">CLV by Channel</h3>
+                    <div class="relative h-64">
+                        <canvas id="channelClvChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Retention Analysis -->
+                <div class="chart-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Retention Analysis</h3>
+                    <div class="relative h-64">
+                        <canvas id="retentionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function logout() {
+            window.location.href = '/logout';
+        }
+
+        const chartConfig = {
+            colors: {
+                primary: '#000080',
+                secondary: '#FFD700',
+                tertiary: 'rgba(0, 0, 128, 0.6)',
+                quaternary: 'rgba(255, 215, 0, 0.6)'
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const data = {{ chart_data_json|safe }};
+            
+            new Chart(document.getElementById('customerSegmentsChart').getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: data.segments.labels,
+                    datasets: [{
+                        data: data.segments.data,
+                        backgroundColor: [
+                            chartConfig.colors.primary,
+                            chartConfig.colors.secondary,
+                            chartConfig.colors.tertiary,
+                            chartConfig.colors.quaternary
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            new Chart(document.getElementById('revenueTrendsChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: data.revenue.labels,
+                    datasets: [{
+                        label: 'Revenue',
+                        data: data.revenue.data,
+                        borderColor: chartConfig.colors.primary,
+                        backgroundColor: chartConfig.colors.tertiary,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            new Chart(document.getElementById('channelClvChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: data.channels.labels,
+                    datasets: [{
+                        label: 'CLV by Channel',
+                        data: data.channels.data,
+                        backgroundColor: chartConfig.colors.secondary,
+                        borderColor: chartConfig.colors.primary
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            new Chart(document.getElementById('retentionChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: data.retention.labels,
+                    datasets: [{
+                        label: 'Retention Rate',
+                        data: data.retention.data,
+                        borderColor: chartConfig.colors.primary,
+                        backgroundColor: chartConfig.colors.tertiary,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        });
+    </script>
+</body>
+</html>
