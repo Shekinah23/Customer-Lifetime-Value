@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CLV ANALYTICS - Clients</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
         :root {
@@ -64,30 +65,35 @@
         <div class="max-w-7xl mx-auto">
             <!-- Filters -->
             <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-                <form id="filterForm" class="flex items-end space-x-4">
+                <div class="flex items-end space-x-4">
+                    <!-- Search Field -->
                     <div class="flex-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Search Clients</label>
+                        <input type="text" id="search" value="{{ search if search else '' }}" 
+                               placeholder="Search by ID or name..." 
+                               class="filter-select w-full px-4 py-2 rounded-lg">
+                    </div>
+                    <!-- Status Filter -->
+                    <div class="w-48">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                        <select name="status" onchange="toggleLimit()" class="filter-select w-full px-4 py-2 rounded-lg">
+                        <select id="status" class="filter-select w-full px-4 py-2 rounded-lg">
                             <option value="">All Statuses</option>
                             <option value="Active" {% if status == 'Active' %}selected{% endif %}>Active</option>
                             <option value="At Risk" {% if status == 'At Risk' %}selected{% endif %}>At Risk</option>
                             <option value="Inactive" {% if status == 'Inactive' %}selected{% endif %}>Inactive</option>
                         </select>
                     </div>
-                    <div id="limitContainer" class="flex-1 {% if not status %}hidden{% endif %}">
+                    <!-- Limit Dropdown -->
+                    <div class="w-48">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Show</label>
-                        <select name="limit" class="filter-select w-full px-4 py-2 rounded-lg">
+                        <select id="limit" class="filter-select w-full px-4 py-2 rounded-lg">
                             <option value="">All Clients</option>
-                            <option value="5" {% if limit == 5 %}selected{% endif %}>Top 5</option>
                             <option value="10" {% if limit == 10 %}selected{% endif %}>Top 10</option>
                             <option value="20" {% if limit == 20 %}selected{% endif %}>Top 20</option>
                             <option value="50" {% if limit == 50 %}selected{% endif %}>Top 50</option>
                         </select>
                     </div>
-                    <div>
-                        <button type="submit" class="btn-primary px-4 py-2 rounded-lg">Apply Filters</button>
-                    </div>
-                </form>
+                </div>
             </div>
 
             <!-- Client List -->
@@ -99,8 +105,8 @@
                             <tr style="background-color: var(--navy-blue);">
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">ID</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Name</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Type</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Segment</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Last Transaction</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">CLV</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
                             </tr>
@@ -111,13 +117,11 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ client.id }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ client.name }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                        {% if client.type == 'Corporate' %}bg-purple-100 text-purple-800
-                                        {% else %}bg-blue-100 text-blue-800{% endif %}">
-                                        {{ client.type }}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                        {{ client.segment }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ client.segment }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ client.ACNTS_LAST_TRAN_DATE }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {% if client.clv is not none %}
                                         ${{ "{:,.2f}".format(client.clv) }}
@@ -147,27 +151,29 @@
             window.location.href = '/logout';
         }
 
-        function toggleLimit() {
-            const status = document.querySelector('select[name="status"]').value;
-            const limitContainer = document.getElementById('limitContainer');
-            if (status) {
-                limitContainer.classList.remove('hidden');
-            } else {
-                limitContainer.classList.add('hidden');
-            }
-        }
-
-        document.getElementById('filterForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const status = this.status.value;
-            const limit = this.limit.value;
+        function applyFilters() {
+            const status = document.getElementById('status').value;
+            const limit = document.getElementById('limit').value;
+            const search = document.getElementById('search').value.trim();
             let url = '/clients';
             const params = [];
-            if (status) params.push(`status=${status}`);
+            if (status) params.push(`status=${encodeURIComponent(status)}`);
             if (limit) params.push(`limit=${limit}`);
+            if (search) params.push(`search=${encodeURIComponent(search)}`);
             if (params.length > 0) url += '?' + params.join('&');
             window.location.href = url;
+        }
+
+        // Apply search filter on Enter key press
+        document.getElementById('search').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                applyFilters();
+            }
         });
+
+        // Apply filters immediately on change
+        document.getElementById('status').addEventListener('change', applyFilters);
+        document.getElementById('limit').addEventListener('change', applyFilters);
     </script>
 </body>
 </html>

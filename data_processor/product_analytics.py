@@ -1,73 +1,87 @@
 import os
+import json
 import sqlite3
 from typing import Dict, List, Any
 from datetime import datetime, timedelta
 
 def get_db_connection():
-    """Get database connection with timeout and cache"""
+    """Get database connection with optimized settings"""
     db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'banking_data.db')
-    conn = sqlite3.connect(db_path, timeout=30)  # Add timeout
-    conn.row_factory = sqlite3.Row
-    # Enable WAL mode for better concurrent access
-    conn.execute('PRAGMA journal_mode=WAL')
-    # Add index optimization
-    conn.execute('PRAGMA temp_store=MEMORY')
-    conn.execute('PRAGMA synchronous=NORMAL')
-    return conn
+    try:
+        # Configure connection for better performance
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        
+        # Enable WAL mode and other optimizations
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA cache_size=-2000')  # Use 2MB of cache
+        conn.execute('PRAGMA temp_store=MEMORY')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA mmap_size=2147483648')  # 2GB memory map
+        
+        return conn
+    except sqlite3.Error as e:
+        print(f"Database connection error: {e}")
+        return None
 
 def calculate_product_performance(product_code: str = None) -> Dict[str, float]:
-    """Calculate product performance metrics"""
+    """Calculate product performance metrics with caching"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if required tables exist
+        # Create performance metrics table if it doesn't exist
+        cursor.execute("DROP TABLE IF EXISTS performance_metrics")
         cursor.execute("""
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name IN ('products', 'clients', 'transactions')
-        """)
-        existing_tables = {row['name'] for row in cursor.fetchall()}
-        required_tables = {'products', 'clients', 'transactions'}
-        
-        if not all(table in existing_tables for table in required_tables):
-            # Return sample data if tables don't exist
-            return {
-                'total_sales': 1250000.00,
-                'avg_clv': 2500.00,
-                'revenue': 850000.00,
-            }
-        
-        # Base query for all products or specific product
-        where_clause = f"WHERE p.PRODUCT_CODE = '{product_code}'" if product_code else ""
-        
-        # Calculate total sales and revenue
-        sales_query = f"""
-            WITH AccountMetrics AS (
-                SELECT 
-                    c.ACNTS_PROD_CODE,
-                    c.ACNTS_ACCOUNT_NUMBER,
-                    julianday('now') - julianday(c.ACNTS_OPENING_DATE) as account_age_days,
-                    CASE 
-                        WHEN c.ACNTS_AC_TYPE = 1 THEN 'Premium'
-                        WHEN c.ACNTS_AC_TYPE = 2 THEN 'Business'
-                        WHEN c.ACNTS_AC_TYPE = 3 THEN 'Retail'
-                        ELSE 'Other'
-                    END as segment
-                FROM clients c
-                WHERE c.ACNTS_OPENING_DATE IS NOT NULL
-                {where_clause}
+            CREATE TABLE performance_metrics (
+                metric_key TEXT PRIMARY KEY,
+                metric_value TEXT,
+                segment_distribution TEXT,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            SELECT 
-                COUNT(DISTINCT ACNTS_ACCOUNT_NUMBER) as total_accounts,
-                AVG(account_age_days) as avg_age_days,
-                COUNT(CASE WHEN segment = 'Premium' THEN 1 END) as premium_accounts,
-                COUNT(CASE WHEN segment = 'Business' THEN 1 END) as business_accounts,
-                COUNT(CASE WHEN segment = 'Retail' THEN 1 END) as retail_accounts
-            FROM AccountMetrics
-        """
+        """)
+        conn.commit()
         
-        cursor.execute(sales_query)
+        # Check if we have recent cached metrics (less than 1 hour old)
+        cursor.execute("""
+            SELECT metric_value, segment_distribution
+            FROM performance_metrics
+            WHERE metric_key = 'overall_performance'
+            AND last_updated > datetime('now', '-1 hour')
+        """)
+        cached = cursor.fetchone()
+        
+        if cached:
+            metrics = json.loads(cached['metric_value'])
+            metrics['segment_distribution'] = json.loads(cached['segment_distribution'])
+            return metrics
+        
+        # Calculate metrics if no cache or cache expired
+        cursor.execute("""
+            SELECT 
+                COUNT(DISTINCT c.ACNTS_ACCOUNT_NUMBER) as total_accounts,
+                AVG(julianday('now') - julianday(c.ACNTS_OPENING_DATE)) as avg_age_days,
+                SUM(CASE WHEN c.ACNTS_AC_TYPE = 1 THEN 1 ELSE 0 END) as premium_accounts,
+                SUM(CASE WHEN c.ACNTS_AC_TYPE = 2 THEN 1 ELSE 0 END) as business_accounts,
+                SUM(CASE WHEN c.ACNTS_AC_TYPE = 3 THEN 1 ELSE 0 END) as retail_accounts
+            FROM clients c
+            WHERE c.ACNTS_OPENING_DATE IS NOT NULL
+            """ + (f"AND c.ACNTS_PROD_CODE = ?" if product_code else ""),
+            [product_code] if product_code else []
+        )
+        
         metrics = cursor.fetchone()
+        if not metrics:
+            return {
+                'total_sales': 0,
+                'avg_clv': 0,
+                'revenue': 0,
+                'segment_distribution': {
+                    'Premium': 0,
+                    'Business': 0,
+                    'Retail': 0
+                }
+            }
         
         # Calculate metrics
         total_accounts = metrics['total_accounts'] or 0
@@ -93,16 +107,30 @@ def calculate_product_performance(product_code: str = None) -> Dict[str, float]:
         retail_revenue = retail_accounts * 500  # Retail accounts generate base revenue
         total_revenue = premium_revenue + business_revenue + retail_revenue
         
-        return {
+        # Prepare metrics for caching
+        metrics_data = {
             'total_sales': total_accounts,
             'avg_clv': avg_clv,
-            'revenue': total_revenue,
-            'segment_distribution': {
-                'Premium': premium_accounts,
-                'Business': business_accounts,
-                'Retail': retail_accounts
-            }
+            'revenue': total_revenue
         }
+        
+        segment_data = {
+            'Premium': premium_accounts,
+            'Business': business_accounts,
+            'Retail': retail_accounts
+        }
+        
+        # Cache the metrics
+        cursor.execute("""
+            INSERT OR REPLACE INTO performance_metrics 
+            (metric_key, metric_value, segment_distribution, last_updated)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, ('overall_performance', json.dumps(metrics_data), json.dumps(segment_data)))
+        conn.commit()
+        
+        # Return combined metrics
+        metrics_data['segment_distribution'] = segment_data
+        return metrics_data
     except Exception as e:
         print(f"Error calculating product performance: {str(e)}")
         # Return sample data in case of any error

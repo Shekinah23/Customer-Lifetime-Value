@@ -4,11 +4,26 @@ import os
 import sqlite3
 import json
 
+from datetime import timedelta
+
 app = Flask(__name__, 
            template_folder=os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates')),
            static_folder=os.path.abspath(os.path.join(os.path.dirname(__file__), 'static')),
            static_url_path='/static')
 app.secret_key = 'dev_secret_key_123'
+app.permanent_session_lifetime = timedelta(days=1)
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session or not session.get('authenticated'):
+            print(f"\nRedirecting to login - authentication required")
+            print(f"Current session: {session}")
+            session.clear()  # Clear any invalid session
+            return redirect(url_for('login'))
+        print(f"\nUser authenticated: {session['user']}")
+        return f(*args, **kwargs)
+    return decorated_function
 
 print(f"Template folder: {app.template_folder}")
 print(f"Static folder: {app.static_folder}")
@@ -16,37 +31,57 @@ print(f"Logo path: {os.path.join(app.static_folder, 'logo', 'logo.png')}")
 print(f"Logo exists: {os.path.exists(os.path.join(app.static_folder, 'logo', 'logo.png'))}")
 
 def get_db():
+    """Get database connection with optimized settings"""
+    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'banking_data.db')
+    
     try:
-        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'banking_data.db')
-        print(f"Connecting to database at: {db_path}")
-        if not os.path.exists(db_path):
-            print("Database file not found, will be created on first write")
-            return None
-        conn = sqlite3.connect(db_path)
+        # Configure connection for better performance
+        conn = sqlite3.connect(db_path, timeout=30)
         conn.row_factory = sqlite3.Row
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM clients")
-            count = cursor.fetchone()[0]
-            print(f"Found {count} clients in database")
-            return conn
-        except sqlite3.OperationalError:
-            print("Database exists but tables not initialized")
+        
+        # Enable WAL mode and other optimizations
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA cache_size=-2000')  # Use 2MB of cache
+        conn.execute('PRAGMA temp_store=MEMORY')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA mmap_size=2147483648')  # 2GB memory map
+        
+        cursor = conn.cursor()
+        
+        # Check if tables exist
+        cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('clients', 'products')")
+        table_count = cursor.fetchone()[0]
+        
+        if table_count < 2:
+            print("Tables not found, initializing database")
+            try:
+                schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'schema.sql')
+                with open(schema_path, 'r') as f:
+                    conn.executescript(f.read())
+                conn.commit()
+                print("Database schema initialized successfully")
+            except Exception as e:
+                print(f"Error initializing database schema: {e}")
+                return None
+        
+        # Verify data exists
+        cursor.execute("SELECT COUNT(*) FROM clients")
+        client_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM products")
+        product_count = cursor.fetchone()[0]
+        
+        if client_count == 0 and product_count == 0:
+            print("Database is empty")
             return None
-    except Exception as e:
+        
+        return conn
+        
+    except sqlite3.Error as e:
         print(f"Database error: {str(e)}")
         return None
-
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user' not in session:
-            print(f"\nRedirecting to login - no user in session")
-            print(f"Current session: {session}")
-            return redirect(url_for('login'))
-        print(f"\nUser authenticated: {session['user']}")
-        return f(*args, **kwargs)
-    return decorated_function
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):
@@ -56,6 +91,10 @@ def serve_static(filename):
     except Exception as e:
         print(f"Error serving static file: {str(e)}")
         return str(e), 500
+
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204  # Return no content for favicon requests
 
 @app.route('/')
 @login_required
@@ -151,38 +190,138 @@ def dashboard():
 @app.route('/clients')
 @login_required
 def clients():
-    # Get filter parameters
-    status = request.args.get('status', '')
-    limit = request.args.get('limit', type=int)
-    
-    # Sample client data
-    all_clients = [
-        {'id': 1, 'name': 'John Smith', 'type': 'Individual', 'segment': 'Premium', 'clv': 50000.00, 'status': 'Active'},
-        {'id': 2, 'name': 'ABC Corp', 'type': 'Corporate', 'segment': 'Premium', 'clv': 150000.00, 'status': 'Active'},
-        {'id': 3, 'name': 'Jane Doe', 'type': 'Individual', 'segment': 'Standard', 'clv': 25000.00, 'status': 'At Risk'},
-        {'id': 4, 'name': 'XYZ Ltd', 'type': 'Corporate', 'segment': 'Basic', 'clv': 75000.00, 'status': 'Inactive'},
-        {'id': 5, 'name': 'Bob Wilson', 'type': 'Individual', 'segment': 'Basic', 'clv': 15000.00, 'status': 'Active'},
-        {'id': 6, 'name': 'Tech Corp', 'type': 'Corporate', 'segment': 'Premium', 'clv': 200000.00, 'status': 'Active'},
-        {'id': 7, 'name': 'Sarah Brown', 'type': 'Individual', 'segment': 'Standard', 'clv': 35000.00, 'status': 'At Risk'},
-        {'id': 8, 'name': 'Global Inc', 'type': 'Corporate', 'segment': 'Premium', 'clv': 180000.00, 'status': 'Active'},
-        {'id': 9, 'name': 'Mike Johnson', 'type': 'Individual', 'segment': 'Basic', 'clv': 20000.00, 'status': 'Inactive'},
-        {'id': 10, 'name': 'First Bank', 'type': 'Corporate', 'segment': 'Premium', 'clv': 250000.00, 'status': 'Active'}
-    ]
-    
-    # Filter by status if specified
-    if status:
-        clients_data = [client for client in all_clients if client['status'] == status]
-    else:
-        clients_data = all_clients
-    
-    # Apply limit if specified
-    if limit:
-        clients_data = sorted(clients_data, key=lambda x: x['clv'], reverse=True)[:limit]
-    
-    return render_template('clients.html', 
-                         clients=clients_data,
-                         status=status,
-                         limit=limit)
+    conn = None
+    try:
+        # Get filter parameters
+        status = request.args.get('status', '')
+        limit = request.args.get('limit', type=int)
+        search = request.args.get('search', '').strip()
+        
+        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'banking_data.db')
+        print(f"Connecting to database at: {db_path}")
+        print(f"Database exists: {os.path.exists(db_path)}")
+        
+        conn = get_db()
+        if conn is None:
+            print("Database connection failed")
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor()
+        
+        # Check if clients table exists and has data
+        cursor.execute("SELECT COUNT(*) FROM clients")
+        count = cursor.fetchone()[0]
+        print(f"Found {count} clients in database")
+        
+        # Build query with filters
+        query = """
+            SELECT 
+                c.ACNTS_CLIENT_NUM as id,
+                COALESCE(c.ACNTS_AC_NAME1, '') || ' ' || COALESCE(c.ACNTS_AC_NAME2, '') as name,
+                CASE 
+                    WHEN c.ACNTS_PROD_CODE = 3102 THEN 'Premium'
+                    WHEN c.ACNTS_PROD_CODE = 3002 THEN 'Business'
+                    WHEN c.ACNTS_PROD_CODE = 3101 THEN 'Retail'
+                    ELSE 'Other'
+                END as segment,
+                CASE 
+                    WHEN c.ACNTS_DORMANT_ACNT = 1 THEN 'Inactive'
+                    WHEN c.ACNTS_INOP_ACNT = 1 THEN 'At Risk'
+                    ELSE 'Active'
+                END as status,
+                c.ACNTS_OPENING_DATE,
+                c.ACNTS_LAST_TRAN_DATE,
+                c.ACNTS_AC_TYPE,
+                c.ACNTS_PROD_CODE
+            FROM clients c
+            WHERE c.ACNTS_CLIENT_NUM IS NOT NULL
+        """
+        params = []
+        
+        if status:
+            query += """
+                AND CASE 
+                    WHEN c.ACNTS_DORMANT_ACNT = 1 THEN 'Inactive'
+                    WHEN c.ACNTS_INOP_ACNT = 1 THEN 'At Risk'
+                    ELSE 'Active'
+                END = ?
+            """
+            params.append(status)
+        
+        if search:
+            query += """
+                AND (
+                    CAST(c.ACNTS_CLIENT_NUM AS TEXT) LIKE ? OR
+                    c.ACNTS_AC_NAME1 LIKE ?
+                )
+            """
+            search_param = f"%{search}%"
+            params.extend([search_param] * 2)
+        
+        query += " ORDER BY c.ACNTS_CLIENT_NUM ASC"
+        
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+        
+        print("\nExecuting query:", query.replace('\n', ' '))
+        print("With params:", params)
+        try:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            print(f"Query returned {len(rows)} rows")
+            if len(rows) > 0:
+                print("Sample row:", dict(rows[0]))
+        except sqlite3.Error as e:
+            print(f"SQL Error: {str(e)}")
+            raise
+        
+        # Convert rows to list of dicts
+        clients_data = []
+        for row in rows:
+            client = dict(row)
+            
+            # Calculate rough CLV based on account type and age
+            account_age_days = 0
+            if client['ACNTS_OPENING_DATE']:
+                cursor.execute("SELECT julianday('now') - julianday(?) as age_days", 
+                             (client['ACNTS_OPENING_DATE'],))
+                age_result = cursor.fetchone()
+                if age_result:
+                    account_age_days = age_result['age_days']
+            
+            # Base CLV calculation
+            base_clv = {
+                3102: 5000,  # Premium accounts
+                3002: 3000,  # Business accounts
+                3101: 1000   # Retail accounts
+            }.get(client['ACNTS_PROD_CODE'], 1000)
+            
+            # Adjust CLV based on account age (years)
+            account_age_years = account_age_days / 365.0
+            client['clv'] = base_clv * (1 + account_age_years * 0.1)
+            
+            clients_data.append(client)
+        
+        conn.close()
+        
+        print("Clients data:", clients_data[:2] if clients_data else "No clients data")
+        print("Status:", status)
+        print("Limit:", limit)
+        print("Search:", search)
+        
+        rendered = render_template('clients.html',
+                                 clients=clients_data,
+                                 status=status,
+                                 limit=limit,
+                                 search=search)
+        return rendered
+                             
+    except Exception as e:
+        print(f"Error loading clients: {str(e)}")
+        if conn:
+            conn.close()
+        return jsonify({'error': 'Failed to load clients'}), 500
 
 from product_analytics import (
     calculate_product_performance,
@@ -200,41 +339,28 @@ def get_product_lifecycle(product_code):
     lifecycle_stages = analyze_product_lifecycle(product_code)
     return jsonify(lifecycle_stages)
 
-@app.route('/products')
-@login_required
-def products():
-    # Get filter parameters
-    limit = request.args.get('limit', type=int)
-    search = request.args.get('search', '').strip()
-    
-    conn = get_db()
-    if conn is None:
-        return jsonify({'error': 'Database connection failed'}), 500
-    
+def get_product_data(conn, limit=None, search=None):
+    """Get product data with optional filtering"""
     cursor = conn.cursor()
-    
     params = []
-    
-    # Build query based on filters with DISTINCT to remove duplicates
     query = """
-        SELECT DISTINCT
-               p.PRODUCT_CODE, 
-               p.PRODUCT_NAME, 
-               p.PRODUCT_GROUP_CODE, 
-               p.PRODUCT_CLASS,
-               p.PRODUCT_FOR_DEPOSITS, 
-               p.PRODUCT_FOR_LOANS, 
-               p.PRODUCT_REVOKED_ON,
-               c.CHARGES_CHG_AMT_CHOICE, 
-               c.CHARGES_FIXED_AMT, 
-               c.CHARGES_CHGS_PERCENTAGE,
-               c.CHARGES_CHG_CURR
+        SELECT 
+           p.PRODUCT_CODE, 
+           p.PRODUCT_NAME, 
+           p.PRODUCT_GROUP_CODE, 
+           p.PRODUCT_CLASS,
+           p.PRODUCT_FOR_DEPOSITS, 
+           p.PRODUCT_FOR_LOANS, 
+           p.PRODUCT_REVOKED_ON,
+           c.CHARGES_CHG_AMT_CHOICE, 
+           c.CHARGES_FIXED_AMT, 
+           c.CHARGES_CHGS_PERCENTAGE,
+           c.CHARGES_CHG_CURR
         FROM products p
         LEFT JOIN charges c ON p.PRODUCT_CODE = c.CHARGES_PROD_CODE
         WHERE 1=1
     """
     
-    # Add search condition if search term provided
     if search:
         query += """
             AND (
@@ -245,7 +371,7 @@ def products():
             )
         """
         search_param = f"%{search}%"
-        params.extend([search_param] * 4)  # Add search parameter 4 times for each OR condition
+        params.extend([search_param] * 4)
     
     query += " ORDER BY p.PRODUCT_NAME"
     
@@ -254,141 +380,57 @@ def products():
         params.append(limit)
     
     cursor.execute(query, params)
-    rows = cursor.fetchall()
-    
-    # Get all product codes first
-    product_codes = [row['PRODUCT_CODE'] for row in rows]
-    
-    # Get all lifecycle stages in a single batch
-    lifecycle_stages = {}
-    if product_codes:
-        # Build query to get all product metrics at once
-        metrics_query = """
-        WITH ProductMetrics AS (
-            SELECT 
-                c.ACNTS_PROD_CODE,
-                MIN(c.ACNTS_OPENING_DATE) as first_account_date,
-                COUNT(DISTINCT c.ACNTS_ACCOUNT_NUMBER) as total_accounts,
-                SUM(CASE WHEN c.ACNTS_AC_TYPE = 1 THEN 1 ELSE 0 END) as premium_accounts,
-                SUM(CASE WHEN c.ACNTS_AC_TYPE = 2 THEN 1 ELSE 0 END) as business_accounts
-            FROM clients c
-            WHERE c.ACNTS_PROD_CODE IN ({})
-            GROUP BY c.ACNTS_PROD_CODE
-        ),
-        MonthlyStats AS (
-            SELECT 
-                c.ACNTS_PROD_CODE,
-                strftime('%Y-%m', c.ACNTS_OPENING_DATE) as month,
-                COUNT(*) as total_accounts
-            FROM clients c
-            WHERE c.ACNTS_OPENING_DATE IS NOT NULL
-            AND c.ACNTS_PROD_CODE IN ({})
-            AND c.ACNTS_OPENING_DATE >= date('now', '-12 months')
-            GROUP BY c.ACNTS_PROD_CODE, month
-        )
-        SELECT 
-            p.PRODUCT_CODE,
-            pm.first_account_date,
-            pm.total_accounts,
-            pm.premium_accounts,
-            pm.business_accounts,
-            GROUP_CONCAT(ms.month || ':' || ms.total_accounts) as monthly_stats
-        FROM products p
-        LEFT JOIN ProductMetrics pm ON p.PRODUCT_CODE = pm.ACNTS_PROD_CODE
-        LEFT JOIN MonthlyStats ms ON p.PRODUCT_CODE = ms.ACNTS_PROD_CODE
-        WHERE p.PRODUCT_CODE IN ({})
-        GROUP BY p.PRODUCT_CODE
-        """.format(
-            ','.join(f"'{code}'" for code in product_codes),
-            ','.join(f"'{code}'" for code in product_codes),
-            ','.join(f"'{code}'" for code in product_codes)
-        )
-        
-        # Create a new cursor for metrics query
-        metrics_cursor = conn.cursor()
-        metrics_cursor.execute(metrics_query)
-        metrics_data = metrics_cursor.fetchall()
-        
-        # Calculate lifecycle stages for all products using the same connection
-        for metrics in metrics_data:
-            product_code = metrics['PRODUCT_CODE']
-            
-            # Calculate product age in months
-            if metrics['first_account_date']:
-                metrics_cursor.execute("SELECT julianday('now') - julianday(?) as age_days", 
-                                    (metrics['first_account_date'],))
-                age_months = metrics_cursor.fetchone()['age_days'] / 30.44
-            else:
-                age_months = 0
-            
-            # New products start in Introduction
-            if age_months < 6:
-                lifecycle_stages[product_code] = "Introduction"
-                continue
-            
-            # Products with few accounts
-            total_accounts = metrics['total_accounts'] or 0
-            if total_accounts < 50:
-                lifecycle_stages[product_code] = "Introduction" if age_months < 12 else "Decline"
-                continue
-            
-            # Analyze growth trends
-            monthly_stats = {}
-            if metrics['monthly_stats']:
-                for stat in metrics['monthly_stats'].split(','):
-                    month, count = stat.split(':')
-                    monthly_stats[month] = int(count)
-            
-            # Calculate growth rates
-            if monthly_stats:
-                months = sorted(monthly_stats.keys(), reverse=True)
-                recent_total = sum(monthly_stats[m] for m in months[:6] if m in monthly_stats)
-                older_total = sum(monthly_stats[m] for m in months[6:] if m in monthly_stats)
-                
-                if older_total > 0:
-                    growth_rate = ((recent_total - older_total) / older_total * 100)
-                    
-                    # Calculate premium ratio
-                    premium_ratio = (metrics['premium_accounts'] or 0) / total_accounts if total_accounts > 0 else 0
-                    business_ratio = (metrics['business_accounts'] or 0) / total_accounts if total_accounts > 0 else 0
-                    
-                    # Determine stage
-                    if growth_rate > 30 or (growth_rate > 20 and premium_ratio > 0.3):
-                        lifecycle_stages[product_code] = "Growth"
-                    elif growth_rate < -15 or (growth_rate < -10 and total_accounts < 100):
-                        lifecycle_stages[product_code] = "Decline"
-                    elif abs(growth_rate) <= 15 and (premium_ratio > 0.3 or business_ratio > 0.4):
-                        lifecycle_stages[product_code] = "Maturity"
-                    else:
-                        lifecycle_stages[product_code] = "Growth" if growth_rate > 0 else "Maturity"
-                else:
-                    lifecycle_stages[product_code] = "Introduction"
-            else:
-                lifecycle_stages[product_code] = "Introduction"
-    
-    # Convert rows to list of dicts with nested charge info and lifecycle stage
-    products_data = []
-    for row in rows:
-        product = dict(row)
-        # Create nested charge object if charge data exists
-        if row['CHARGES_CHG_AMT_CHOICE'] is not None:
-            product['charge'] = {
-                'CHARGES_CHG_AMT_CHOICE': row['CHARGES_CHG_AMT_CHOICE'],
-                'CHARGES_FIXED_AMT': row['CHARGES_FIXED_AMT'],
-                'CHARGES_CHGS_PERCENTAGE': row['CHARGES_CHGS_PERCENTAGE'],
-                'CHARGES_CHG_CURR': row['CHARGES_CHG_CURR']
-            }
-        else:
-            product['charge'] = None
-        
-        # Get lifecycle stage from pre-calculated results
-        product['lifecycle_stage'] = lifecycle_stages.get(product['PRODUCT_CODE'], 'N/A')
-        products_data.append(product)
-    
+    return cursor.fetchall()
+
+@app.route('/products')
+@login_required
+def products():
+    conn = None
     try:
-        # Close database connection now that we're done with all queries
-        conn.close()
-        # Get performance metrics (includes segment distribution)
+        # Get filter parameters
+        limit = request.args.get('limit', type=int) or 50  # Default to 50 products
+        search = request.args.get('search', '').strip()
+        
+        conn = get_db()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        try:
+            # Get product data
+            rows = get_product_data(conn, limit, search)
+            if not rows:
+                print("No products found")
+                return render_template('products.html',
+                                    products=[],
+                                    limit=limit,
+                                    search=search,
+                                    analysis={},
+                                    analysis_json="{}")
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            return jsonify({'error': 'Database error occurred'}), 500
+        
+        # Convert rows to list of dicts with nested charge info
+        products_data = []
+        for row in rows:
+            product = dict(row)
+            if row['CHARGES_CHG_AMT_CHOICE'] is not None:
+                product['charge'] = {
+                    'CHARGES_CHG_AMT_CHOICE': row['CHARGES_CHG_AMT_CHOICE'],
+                    'CHARGES_FIXED_AMT': row['CHARGES_FIXED_AMT'],
+                    'CHARGES_CHGS_PERCENTAGE': row['CHARGES_CHGS_PERCENTAGE'],
+                    'CHARGES_CHG_CURR': row['CHARGES_CHG_CURR']
+                }
+            else:
+                product['charge'] = None
+            
+            # Get lifecycle stage for each product
+            lifecycle_stages = analyze_product_lifecycle(product['PRODUCT_CODE'])
+            product['lifecycle_stage'] = next((stage['name'] for stage in lifecycle_stages if stage['current']), 'Introduction')
+            
+            products_data.append(product)
+        
+        # Get performance metrics
         performance = calculate_product_performance()
         segment_distribution = performance.get('segment_distribution', {
             'Premium': 0,
@@ -396,32 +438,33 @@ def products():
             'Retail': 0
         })
         
-        # Prepare analysis data with minimal metrics for fast initial load
+        # Prepare analysis data
         analysis = {
             'total_sales': performance['total_sales'],
             'avg_clv': performance['avg_clv'],
             'revenue': performance['revenue'],
             'segment_distribution': segment_distribution,
-            'lifecycle_stages': get_default_lifecycle_stages("Growth"),
-            'bundle_recommendations': get_bundling_recommendations()  # Load recommendations immediately
+            'lifecycle_stages': get_default_lifecycle_stages("Growth")
         }
         
-        # Get initial data
+        # Get chart data
         revenue_segments = get_revenue_by_segment()
         sales_trend = get_default_sales_trend_data()
         bundle_recommendations = get_bundling_recommendations()
         
-        # Prepare initial chart data
         chart_data = {
             'sales': sales_trend,
             'segments': revenue_segments,
-            'segment_distribution': segment_distribution
+            'segment_distribution': segment_distribution,
+            'bundle_recommendations': bundle_recommendations
         }
-
+        
         # Update analysis with bundle recommendations
         analysis['bundle_recommendations'] = bundle_recommendations
         
-        return render_template('products.html', 
+        conn.close()
+        
+        return render_template('products.html',
                              products=products_data,
                              limit=limit,
                              search=search,
@@ -429,8 +472,10 @@ def products():
                              analysis_json=json.dumps(chart_data))
                              
     except Exception as e:
-        print(f"Error loading product analytics: {str(e)}")
-        return jsonify({'error': 'Failed to load product analytics'}), 500
+        print(f"Error loading products: {str(e)}")
+        if conn:
+            conn.close()
+        return jsonify({'error': 'Failed to load products'}), 500
 
 @app.route('/api/product/analytics')
 @login_required
@@ -480,9 +525,11 @@ def download_revenue_csv():
 
 @app.route('/logout')
 def logout():
-    session.pop('user', None)
+    print(f"Logging out user: {session.get('user')}")
+    session.clear()  # Clear all session data
     response = redirect(url_for('login'))
     response.delete_cookie('user')
+    print("Session cleared and user logged out")
     return response
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -490,8 +537,34 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        session['user'] = username
+        
+        # For demo purposes, accept any non-empty username/password
+        if username and password:
+            # Set session variables
+            session.clear()  # Clear any existing session
+            session['user'] = username
+            session['authenticated'] = True
+            session.permanent = True  # Make session permanent
+            print(f"Login successful for user: {username}")
+            print(f"Session data: {session}")
+            
+            # Redirect to the page they were trying to access, or landing page
+            next_page = request.args.get('next')
+            if next_page and next_page.startswith('/'):  # Ensure URL is relative
+                return redirect(next_page)
+            return redirect(url_for('landing_page'))
+        else:
+            print("Login failed: Missing username or password")
+            return render_template('login.html', error="Please enter both username and password")
+            
+    elif 'user' in session and session.get('authenticated'):
+        print(f"User already logged in: {session['user']}")
         return redirect(url_for('landing_page'))
+        
+    # Store the page they were trying to access
+    if request.args.get('next'):
+        session['next'] = request.args.get('next')
+        
     return render_template('login.html')
 
 if __name__ == '__main__':
