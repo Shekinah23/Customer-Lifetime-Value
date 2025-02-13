@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CLV ANALYTICS - Products</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/product-lifecycle.js') }}"></script>
     <style>
         :root {
             --navy-blue: #000080;
@@ -36,6 +38,18 @@
             background-color: rgba(0, 0, 128, 0.8);
             transform: translateY(-1px);
         }
+        .stage-description {
+            background-color: white;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+            transition: all 0.2s ease;
+        }
+        .stage-description:hover {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
     </style>
 </head>
 <body class="bg-white">
@@ -64,32 +78,29 @@
         <div class="max-w-7xl mx-auto">
             <!-- Filters -->
             <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-                <form id="filterForm" class="flex items-end space-x-4">
+                <div class="flex items-end space-x-4">
+                    <!-- Search Field -->
                     <div class="flex-1">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Product Type</label>
-                        <select name="type" onchange="toggleLimit()" class="filter-select w-full px-4 py-2 rounded-lg">
-                            <option value="">All Types</option>
-                            <option value="deposit" {% if type == 'deposit' %}selected{% endif %}>Deposit Products</option>
-                            <option value="loan" {% if type == 'loan' %}selected{% endif %}>Loan Products</option>
-                        </select>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Search Products</label>
+                        <input type="text" id="search" value="{{ search if search else '' }}" 
+                               placeholder="Search by code, name, group, class..." 
+                               class="filter-select w-full px-4 py-2 rounded-lg">
                     </div>
-                    <div id="limitContainer" class="flex-1 {% if not type %}hidden{% endif %}">
+                    <!-- Limit Dropdown -->
+                    <div class="w-48">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Show</label>
-                        <select name="limit" class="filter-select w-full px-4 py-2 rounded-lg">
+                        <select id="limit" class="filter-select w-full px-4 py-2 rounded-lg">
                             <option value="">All Products</option>
                             <option value="10" {% if limit == 10 %}selected{% endif %}>Top 10</option>
                             <option value="20" {% if limit == 20 %}selected{% endif %}>Top 20</option>
                             <option value="50" {% if limit == 50 %}selected{% endif %}>Top 50</option>
                         </select>
                     </div>
-                    <div>
-                        <button type="submit" class="btn-primary px-4 py-2 rounded-lg">Apply Filters</button>
-                    </div>
-                </form>
+                </div>
             </div>
 
             <!-- Products List -->
-            <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
                 <h2 class="text-2xl font-bold mb-6" style="color: var(--navy-blue);">Products List</h2>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -101,6 +112,8 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Class</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Type</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Stage</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Charge</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -127,10 +140,113 @@
                                         {{ "Active" if not product.PRODUCT_REVOKED_ON else "Inactive" }}
                                     </span>
                                 </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                        {% if product.lifecycle_stage == 'Growth' %}bg-blue-100 text-blue-800
+                                        {% elif product.lifecycle_stage == 'Maturity' %}bg-green-100 text-green-800
+                                        {% elif product.lifecycle_stage == 'Decline' %}bg-red-100 text-red-800
+                                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                        {{ product.lifecycle_stage }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {% if product.charge %}
+                                        {% if product.charge.CHARGES_CHG_AMT_CHOICE == 1 %}
+                                            {{ product.charge.CHARGES_FIXED_AMT }} {{ product.charge.CHARGES_CHG_CURR }} (Fixed)
+                                        {% elif product.charge.CHARGES_CHG_AMT_CHOICE == 2 %}
+                                            {{ product.charge.CHARGES_CHGS_PERCENTAGE }}% (Percentage)
+                                        {% elif product.charge.CHARGES_CHG_AMT_CHOICE == 3 %}
+                                            Slab Based
+                                        {% endif %}
+                                    {% else %}
+                                        No charge
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Product Analysis -->
+            <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Product Performance -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-xl font-bold mb-4" style="color: var(--navy-blue);">Product Performance</h3>
+                    <div class="space-y-4">
+                        <div class="relative h-64">
+                            <canvas id="productSalesChart"></canvas>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="p-4 rounded-lg bg-blue-50">
+                                <p class="text-sm text-gray-600">Total Sales</p>
+                                <p class="text-lg font-bold text-blue-800">${{ "{:,.2f}".format(analysis.total_sales) }}</p>
+                            </div>
+                            <div class="p-4 rounded-lg bg-green-50">
+                                <p class="text-sm text-gray-600">Avg CLV</p>
+                                <p class="text-lg font-bold text-green-800">${{ "{:,.2f}".format(analysis.avg_clv) }}</p>
+                            </div>
+                            <div class="p-4 rounded-lg bg-purple-50">
+                                <p class="text-sm text-gray-600">Revenue</p>
+                                <p class="text-lg font-bold text-purple-800">${{ "{:,.2f}".format(analysis.revenue) }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Revenue by Segment -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-xl font-bold mb-4" style="color: var(--navy-blue);">Revenue by Segment</h3>
+                    <div class="relative h-64">
+                        <canvas id="segmentRevenueChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Product Bundling -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-xl font-bold mb-4" style="color: var(--navy-blue);">Bundling Recommendations</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="relative h-48">
+                            <canvas id="bundlingChart"></canvas>
+                        </div>
+                        <div class="space-y-4 overflow-y-auto max-h-48">
+                            {% if analysis.bundle_recommendations %}
+                                {% for bundle in analysis.bundle_recommendations %}
+                                    <div class="p-4 rounded-lg bg-gray-50">
+                                        <h4 class="font-semibold text-gray-900">{{ bundle.name }}</h4>
+                                        <p class="text-sm text-gray-600 mt-1">{{ bundle.description }}</p>
+                                        <div class="mt-2">
+                                            <span class="text-sm font-medium text-gray-900">Bundled Products:</span>
+                                            <div class="flex flex-wrap gap-2 mt-1">
+                                                {% for product in bundle.products %}
+                                                <div class="flex flex-col">
+                                                    <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">{{ product.name }}</span>
+                                                    {% if product.adoption_rate %}
+                                                    <span class="text-xs text-gray-600 mt-1">{{ "%.1f"|format(product.adoption_rate) }}% adoption</span>
+                                                    {% endif %}
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <div class="text-sm">
+                                                <span class="font-medium text-gray-900">Potential Revenue Increase:</span>
+                                                <span class="text-green-600">+{{ bundle.revenue_increase }}%</span>
+                                            </div>
+                                            <div class="text-xs text-gray-600 mt-1">
+                                                Based on {{ bundle.pair_count if bundle.pair_count else '0' }} existing combinations
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="p-4 text-gray-600">
+                                    No bundle recommendations available
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -141,27 +257,198 @@
             window.location.href = '/logout';
         }
 
-        function toggleLimit() {
-            const type = document.querySelector('select[name="type"]').value;
-            const limitContainer = document.getElementById('limitContainer');
-            if (type) {
-                limitContainer.classList.remove('hidden');
-            } else {
-                limitContainer.classList.add('hidden');
-            }
-        }
-
-        document.getElementById('filterForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const type = this.type.value;
-            const limit = this.limit.value;
+        function applyFilters() {
+            const limit = document.getElementById('limit').value;
+            const search = document.getElementById('search').value.trim();
             let url = '/products';
             const params = [];
-            if (type) params.push(`type=${type}`);
+            if (search) params.push(`search=${encodeURIComponent(search)}`);
             if (limit) params.push(`limit=${limit}`);
             if (params.length > 0) url += '?' + params.join('&');
             window.location.href = url;
+        }
+
+        // Apply search filter on Enter key press
+        document.getElementById('search').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                applyFilters();
+            }
         });
+
+        // Apply limit filter immediately on change
+        document.getElementById('limit').addEventListener('change', applyFilters);
+
+        // Initialize chart configuration
+        const chartConfig = {
+            colors: {
+                primary: '#000080',
+                secondary: '#FFD700',
+                tertiary: 'rgba(0, 0, 128, 0.6)',
+                quaternary: 'rgba(255, 215, 0, 0.6)',
+                accent1: '#4CAF50',
+                accent2: '#2196F3',
+                accent3: '#FFC107',
+                accent4: '#9C27B0'
+            }
+        };
+
+        // Initialize analysis data
+        const analysisData = JSON.parse('{{ analysis|tojson|safe }}');
+        const chartData = JSON.parse('{{ analysis_json|safe }}');
+        
+
+        // Product Sales Chart
+        const salesChart = 
+        new Chart(document.getElementById('productSalesChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: chartData.sales.labels,
+                datasets: [{
+                    label: 'Sales',
+                    data: chartData.sales.data,
+                    borderColor: chartConfig.colors.primary,
+                    backgroundColor: chartConfig.colors.tertiary,
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Product Sales Trend',
+                        font: {
+                            size: 16,
+                            weight: 'bold'
+                        }
+                    },
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+        // Segment Revenue Chart
+        const segmentChart = 
+        new Chart(document.getElementById('segmentRevenueChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: chartData.segments.labels,
+                datasets: [{
+                    data: chartData.segments.data,
+                    backgroundColor: [
+                        chartConfig.colors.primary,
+                        chartConfig.colors.secondary,
+                        chartConfig.colors.tertiary,
+                        chartConfig.colors.quaternary
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Bundling Chart
+        const bundlingChart = new Chart(document.getElementById('bundlingChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: chartData.bundle_recommendations.map(bundle => bundle.name),
+                datasets: [{
+                    label: 'Revenue Increase Potential',
+                    data: chartData.bundle_recommendations.map(bundle => bundle.revenue_increase),
+                    backgroundColor: [
+                        chartConfig.colors.accent1,
+                        chartConfig.colors.accent2,
+                        chartConfig.colors.accent3
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Revenue Increase (%)'
+                        }
+                    }
+                }
+            }
+        });
+        // Update charts with real data
+        async function updateCharts() {
+            try {
+                const response = await fetch('/api/product/analytics');
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('Error loading analytics:', data.error);
+                    return;
+                }
+                
+                // Update bundling chart
+                if (data.bundle_recommendations && data.bundle_recommendations.length > 0) {
+                    bundlingChart.data.labels = data.bundle_recommendations.map(bundle => bundle.name);
+                    bundlingChart.data.datasets[0].data = data.bundle_recommendations.map(bundle => bundle.revenue_increase);
+                    bundlingChart.update();
+                }
+                
+                // Update segment revenue chart
+                if (data.revenue_segments) {
+                    segmentChart.data.labels = data.revenue_segments.labels;
+                    segmentChart.data.datasets[0].data = data.revenue_segments.data;
+                    segmentChart.update();
+                }
+                
+                // Update sales chart
+                if (data.sales_trend) {
+                    salesChart.data.labels = data.sales_trend.labels;
+                    salesChart.data.datasets[0].data = data.sales_trend.data;
+                    salesChart.update();
+                }
+            } catch (error) {
+                console.error('Error updating charts:', error);
+            }
+        }
+        
+        // Update charts when page loads
+        updateCharts();
     </script>
 </body>
 </html>

@@ -79,7 +79,13 @@ def dashboard():
         'churn_prediction': 'Low Risk',
         'clv_trend': 'Upward',
         'cac_breakdown': 'Marketing: 60%, Sales: 40%',
-        'revenue_per_customer': 250.00
+        'revenue_per_customer': 250.00,
+        'cac_digital_ads': 120.00,
+        'cac_content': 80.00,
+        'cac_social': 60.00,
+        'cac_sales_team': 150.00,
+        'cac_support': 90.00,
+        'cac_tools': 50.00
     }
     
     revenue_metrics = {
@@ -97,6 +103,17 @@ def dashboard():
         'segments': {
             'labels': ['Premium', 'Standard', 'Basic', 'Trial'],
             'data': [30, 45, 15, 10]
+        },
+        'cac_breakdown': {
+            'labels': [
+                'Digital Advertising',
+                'Content Marketing',
+                'Social Media',
+                'Sales Team',
+                'Customer Support',
+                'Tools & Software'
+            ],
+            'data': [120.00, 80.00, 60.00, 150.00, 90.00, 50.00]
         },
         'revenue': {
             'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
@@ -167,12 +184,28 @@ def clients():
                          status=status,
                          limit=limit)
 
+from product_analytics import (
+    calculate_product_performance,
+    get_revenue_by_segment,
+    analyze_product_lifecycle,
+    get_bundling_recommendations,
+    get_sales_trend_data,
+    get_default_lifecycle_stages,
+    get_default_sales_trend_data
+)
+
+@app.route('/api/product/lifecycle/<product_code>')
+@login_required
+def get_product_lifecycle(product_code):
+    lifecycle_stages = analyze_product_lifecycle(product_code)
+    return jsonify(lifecycle_stages)
+
 @app.route('/products')
 @login_required
 def products():
     # Get filter parameters
-    product_type = request.args.get('type', '')
     limit = request.args.get('limit', type=int)
+    search = request.args.get('search', '').strip()
     
     conn = get_db()
     if conn is None:
@@ -180,35 +213,246 @@ def products():
     
     cursor = conn.cursor()
     
-    # Build query based on filters
-    query = """
-        SELECT PRODUCT_CODE, PRODUCT_NAME, PRODUCT_GROUP_CODE, PRODUCT_CLASS,
-               PRODUCT_FOR_DEPOSITS, PRODUCT_FOR_LOANS, PRODUCT_REVOKED_ON
-        FROM products
-        WHERE 1=1
-    """
     params = []
     
-    if product_type:
-        if product_type == 'deposit':
-            query += " AND PRODUCT_FOR_DEPOSITS = 1"
-        elif product_type == 'loan':
-            query += " AND PRODUCT_FOR_LOANS = 1"
+    # Build query based on filters with DISTINCT to remove duplicates
+    query = """
+        SELECT DISTINCT
+               p.PRODUCT_CODE, 
+               p.PRODUCT_NAME, 
+               p.PRODUCT_GROUP_CODE, 
+               p.PRODUCT_CLASS,
+               p.PRODUCT_FOR_DEPOSITS, 
+               p.PRODUCT_FOR_LOANS, 
+               p.PRODUCT_REVOKED_ON,
+               c.CHARGES_CHG_AMT_CHOICE, 
+               c.CHARGES_FIXED_AMT, 
+               c.CHARGES_CHGS_PERCENTAGE,
+               c.CHARGES_CHG_CURR
+        FROM products p
+        LEFT JOIN charges c ON p.PRODUCT_CODE = c.CHARGES_PROD_CODE
+        WHERE 1=1
+    """
     
-    query += " ORDER BY PRODUCT_CODE"
+    # Add search condition if search term provided
+    if search:
+        query += """
+            AND (
+                CAST(p.PRODUCT_CODE AS TEXT) LIKE ? OR
+                p.PRODUCT_NAME LIKE ? OR
+                p.PRODUCT_GROUP_CODE LIKE ? OR
+                p.PRODUCT_CLASS LIKE ?
+            )
+        """
+        search_param = f"%{search}%"
+        params.extend([search_param] * 4)  # Add search parameter 4 times for each OR condition
+    
+    query += " ORDER BY p.PRODUCT_NAME"
     
     if limit:
         query += " LIMIT ?"
         params.append(limit)
     
     cursor.execute(query, params)
-    products_data = cursor.fetchall()
-    conn.close()
+    rows = cursor.fetchall()
     
-    return render_template('products.html', 
-                         products=products_data,
-                         type=product_type,
-                         limit=limit)
+    # Get all product codes first
+    product_codes = [row['PRODUCT_CODE'] for row in rows]
+    
+    # Get all lifecycle stages in a single batch
+    lifecycle_stages = {}
+    if product_codes:
+        # Build query to get all product metrics at once
+        metrics_query = """
+        WITH ProductMetrics AS (
+            SELECT 
+                c.ACNTS_PROD_CODE,
+                MIN(c.ACNTS_OPENING_DATE) as first_account_date,
+                COUNT(DISTINCT c.ACNTS_ACCOUNT_NUMBER) as total_accounts,
+                SUM(CASE WHEN c.ACNTS_AC_TYPE = 1 THEN 1 ELSE 0 END) as premium_accounts,
+                SUM(CASE WHEN c.ACNTS_AC_TYPE = 2 THEN 1 ELSE 0 END) as business_accounts
+            FROM clients c
+            WHERE c.ACNTS_PROD_CODE IN ({})
+            GROUP BY c.ACNTS_PROD_CODE
+        ),
+        MonthlyStats AS (
+            SELECT 
+                c.ACNTS_PROD_CODE,
+                strftime('%Y-%m', c.ACNTS_OPENING_DATE) as month,
+                COUNT(*) as total_accounts
+            FROM clients c
+            WHERE c.ACNTS_OPENING_DATE IS NOT NULL
+            AND c.ACNTS_PROD_CODE IN ({})
+            AND c.ACNTS_OPENING_DATE >= date('now', '-12 months')
+            GROUP BY c.ACNTS_PROD_CODE, month
+        )
+        SELECT 
+            p.PRODUCT_CODE,
+            pm.first_account_date,
+            pm.total_accounts,
+            pm.premium_accounts,
+            pm.business_accounts,
+            GROUP_CONCAT(ms.month || ':' || ms.total_accounts) as monthly_stats
+        FROM products p
+        LEFT JOIN ProductMetrics pm ON p.PRODUCT_CODE = pm.ACNTS_PROD_CODE
+        LEFT JOIN MonthlyStats ms ON p.PRODUCT_CODE = ms.ACNTS_PROD_CODE
+        WHERE p.PRODUCT_CODE IN ({})
+        GROUP BY p.PRODUCT_CODE
+        """.format(
+            ','.join(f"'{code}'" for code in product_codes),
+            ','.join(f"'{code}'" for code in product_codes),
+            ','.join(f"'{code}'" for code in product_codes)
+        )
+        
+        # Create a new cursor for metrics query
+        metrics_cursor = conn.cursor()
+        metrics_cursor.execute(metrics_query)
+        metrics_data = metrics_cursor.fetchall()
+        
+        # Calculate lifecycle stages for all products using the same connection
+        for metrics in metrics_data:
+            product_code = metrics['PRODUCT_CODE']
+            
+            # Calculate product age in months
+            if metrics['first_account_date']:
+                metrics_cursor.execute("SELECT julianday('now') - julianday(?) as age_days", 
+                                    (metrics['first_account_date'],))
+                age_months = metrics_cursor.fetchone()['age_days'] / 30.44
+            else:
+                age_months = 0
+            
+            # New products start in Introduction
+            if age_months < 6:
+                lifecycle_stages[product_code] = "Introduction"
+                continue
+            
+            # Products with few accounts
+            total_accounts = metrics['total_accounts'] or 0
+            if total_accounts < 50:
+                lifecycle_stages[product_code] = "Introduction" if age_months < 12 else "Decline"
+                continue
+            
+            # Analyze growth trends
+            monthly_stats = {}
+            if metrics['monthly_stats']:
+                for stat in metrics['monthly_stats'].split(','):
+                    month, count = stat.split(':')
+                    monthly_stats[month] = int(count)
+            
+            # Calculate growth rates
+            if monthly_stats:
+                months = sorted(monthly_stats.keys(), reverse=True)
+                recent_total = sum(monthly_stats[m] for m in months[:6] if m in monthly_stats)
+                older_total = sum(monthly_stats[m] for m in months[6:] if m in monthly_stats)
+                
+                if older_total > 0:
+                    growth_rate = ((recent_total - older_total) / older_total * 100)
+                    
+                    # Calculate premium ratio
+                    premium_ratio = (metrics['premium_accounts'] or 0) / total_accounts if total_accounts > 0 else 0
+                    business_ratio = (metrics['business_accounts'] or 0) / total_accounts if total_accounts > 0 else 0
+                    
+                    # Determine stage
+                    if growth_rate > 30 or (growth_rate > 20 and premium_ratio > 0.3):
+                        lifecycle_stages[product_code] = "Growth"
+                    elif growth_rate < -15 or (growth_rate < -10 and total_accounts < 100):
+                        lifecycle_stages[product_code] = "Decline"
+                    elif abs(growth_rate) <= 15 and (premium_ratio > 0.3 or business_ratio > 0.4):
+                        lifecycle_stages[product_code] = "Maturity"
+                    else:
+                        lifecycle_stages[product_code] = "Growth" if growth_rate > 0 else "Maturity"
+                else:
+                    lifecycle_stages[product_code] = "Introduction"
+            else:
+                lifecycle_stages[product_code] = "Introduction"
+    
+    # Convert rows to list of dicts with nested charge info and lifecycle stage
+    products_data = []
+    for row in rows:
+        product = dict(row)
+        # Create nested charge object if charge data exists
+        if row['CHARGES_CHG_AMT_CHOICE'] is not None:
+            product['charge'] = {
+                'CHARGES_CHG_AMT_CHOICE': row['CHARGES_CHG_AMT_CHOICE'],
+                'CHARGES_FIXED_AMT': row['CHARGES_FIXED_AMT'],
+                'CHARGES_CHGS_PERCENTAGE': row['CHARGES_CHGS_PERCENTAGE'],
+                'CHARGES_CHG_CURR': row['CHARGES_CHG_CURR']
+            }
+        else:
+            product['charge'] = None
+        
+        # Get lifecycle stage from pre-calculated results
+        product['lifecycle_stage'] = lifecycle_stages.get(product['PRODUCT_CODE'], 'N/A')
+        products_data.append(product)
+    
+    try:
+        # Close database connection now that we're done with all queries
+        conn.close()
+        # Get performance metrics (includes segment distribution)
+        performance = calculate_product_performance()
+        segment_distribution = performance.get('segment_distribution', {
+            'Premium': 0,
+            'Business': 0,
+            'Retail': 0
+        })
+        
+        # Prepare analysis data with minimal metrics for fast initial load
+        analysis = {
+            'total_sales': performance['total_sales'],
+            'avg_clv': performance['avg_clv'],
+            'revenue': performance['revenue'],
+            'segment_distribution': segment_distribution,
+            'lifecycle_stages': get_default_lifecycle_stages("Growth"),
+            'bundle_recommendations': get_bundling_recommendations()  # Load recommendations immediately
+        }
+        
+        # Get initial data
+        revenue_segments = get_revenue_by_segment()
+        sales_trend = get_default_sales_trend_data()
+        bundle_recommendations = get_bundling_recommendations()
+        
+        # Prepare initial chart data
+        chart_data = {
+            'sales': sales_trend,
+            'segments': revenue_segments,
+            'segment_distribution': segment_distribution
+        }
+
+        # Update analysis with bundle recommendations
+        analysis['bundle_recommendations'] = bundle_recommendations
+        
+        return render_template('products.html', 
+                             products=products_data,
+                             limit=limit,
+                             search=search,
+                             analysis=analysis,
+                             analysis_json=json.dumps(chart_data))
+                             
+    except Exception as e:
+        print(f"Error loading product analytics: {str(e)}")
+        return jsonify({'error': 'Failed to load product analytics'}), 500
+
+@app.route('/api/product/analytics')
+@login_required
+def get_product_analytics():
+    """API endpoint for loading remaining analytics data asynchronously"""
+    try:
+        # Get bundle recommendations
+        bundle_recommendations = get_bundling_recommendations()
+        
+        # Get revenue segments and sales trend data
+        revenue_segments = get_revenue_by_segment()
+        sales_trend = get_sales_trend_data()
+        
+        # Return all analytics data
+        return jsonify({
+            'bundle_recommendations': bundle_recommendations,
+            'revenue_segments': revenue_segments,
+            'sales_trend': sales_trend
+        })
+    except Exception as e:
+        print(f"Error loading additional analytics: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/reports')
 @login_required
