@@ -374,13 +374,45 @@
                     datasets: [{
                         label: 'CLV by Channel',
                         data: data.channels.data,
-                        backgroundColor: chartConfig.colors.secondary,
-                        borderColor: chartConfig.colors.primary
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.8)',   // Blue for Direct
+                            'rgba(16, 185, 129, 0.8)',   // Green for Referral
+                            'rgba(245, 158, 11, 0.8)',   // Orange for Social
+                            'rgba(139, 92, 246, 0.8)'    // Purple for Email
+                        ],
+                        borderColor: [
+                            'rgb(59, 130, 246)',
+                            'rgb(16, 185, 129)',
+                            'rgb(245, 158, 11)',
+                            'rgb(139, 92, 246)'
+                        ],
+                        borderWidth: 1
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `CLV: $${context.raw.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Customer Lifetime Value ($)'
+                            }
+                        }
+                    }
                 }
             });
 

@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, send_from_directory
 from functools import wraps
 import os
 import sqlite3
 import json
+import random
 import pandas as pd
 from datetime import timedelta
 from churn_predictor import calculate_churn_probability
@@ -30,20 +31,56 @@ def get_db():
     """Get database connection with optimized settings"""
     db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'banking_data.db')
     
+    if not os.path.exists(db_path):
+        print(f"Database file not found at: {db_path}")
+        return None
+        
     try:
+        print(f"Connecting to database at: {db_path}")
         conn = sqlite3.connect(db_path, timeout=30)
         conn.row_factory = sqlite3.Row
         
+        # Set PRAGMA statements first for better performance
         conn.execute('PRAGMA journal_mode=WAL')
         conn.execute('PRAGMA cache_size=-2000')
         conn.execute('PRAGMA temp_store=MEMORY')
         conn.execute('PRAGMA synchronous=NORMAL')
         conn.execute('PRAGMA mmap_size=2147483648')
+        conn.commit()
+        
+        # Check if clients table exists
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='clients'")
+        table_exists = cursor.fetchone()
+        if not table_exists:
+            print("Clients table does not exist in the database")
+            conn.close()
+            return None
+        
+        print("Clients table found")
+        
+        # Verify table has data
+        cursor.execute("SELECT COUNT(*) FROM clients")
+        count = cursor.fetchone()[0]
+        print(f"Found {count} records in clients table")
+        
+        # Create indexes for better performance
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_client_num ON clients(ACNTS_CLIENT_NUM)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_opening_date ON clients(ACNTS_OPENING_DATE)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_last_tran ON clients(ACNTS_LAST_TRAN_DATE)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_prod_code ON clients(ACNTS_PROD_CODE)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_dormant ON clients(ACNTS_DORMANT_ACNT)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_inop ON clients(ACNTS_INOP_ACNT)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_ac_name ON clients(ACNTS_AC_NAME1)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_status ON clients(ACNTS_DORMANT_ACNT, ACNTS_INOP_ACNT)')
+        conn.commit()
         
         return conn
         
     except Exception as e:
         print(f"Database error: {str(e)}")
+        if 'conn' in locals():
+            conn.close()
         return None
 
 @app.route('/')
@@ -207,10 +244,341 @@ def dashboard():
                          chart_data=chart_data,
                          chart_data_json=chart_data_json)
 
+@app.route('/client/<client_id>')
+@login_required
+def client_details(client_id):
+    conn = None
+    try:
+        conn = get_db()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        cursor = conn.cursor()
+        
+        # Get client basic info
+        cursor.execute("""
+            SELECT 
+                c.ACNTS_CLIENT_NUM as id,
+                COALESCE(c.ACNTS_AC_NAME1, '') || ' ' || COALESCE(c.ACNTS_AC_NAME2, '') as name,
+                CASE 
+                    WHEN c.ACNTS_PROD_CODE = 3102 THEN 'Premium'
+                    WHEN c.ACNTS_PROD_CODE = 3002 THEN 'Business'
+                    WHEN c.ACNTS_PROD_CODE = 3101 THEN 'Retail'
+                    ELSE 'Other'
+                END as segment,
+                CASE 
+                    WHEN c.ACNTS_DORMANT_ACNT = 1 THEN 'Inactive'
+                    WHEN c.ACNTS_INOP_ACNT = 1 THEN 'At Risk'
+                    ELSE 'Active'
+                END as status,
+                c.*
+            FROM clients c
+            WHERE c.ACNTS_CLIENT_NUM = ?
+        """, (client_id,))
+        
+        client = dict(cursor.fetchone())
+        
+        # Calculate current CLV
+        account_age_days = 0
+        if client['ACNTS_OPENING_DATE']:
+            cursor.execute("SELECT julianday('now') - julianday(?) as age_days", 
+                         (client['ACNTS_OPENING_DATE'],))
+            age_result = cursor.fetchone()
+            if age_result:
+                account_age_days = age_result['age_days']
+        
+        base_clv = {
+            3102: 5000,  # Premium accounts
+            3002: 3000,  # Business accounts
+            3101: 1000   # Retail accounts
+        }.get(client['ACNTS_PROD_CODE'], 1000)
+        
+        account_age_years = account_age_days / 365.0
+        current_clv = base_clv * (1 + account_age_years * 0.1)
+        
+        # Calculate predicted CLV and trend
+        engagement_score = (
+            (client['ACNTS_ATM_OPERN'] or 0) / 20 +
+            (client['ACNTS_INET_OPERN'] or 0) / 30 * 1.5 +
+            (client['ACNTS_SMS_OPERN'] or 0) / 25 * 1.2
+        ) / 3.7 * 100
+        
+        product_score = 0
+        if client['ACNTS_SALARY_ACNT'] == 1:
+            product_score += 50
+        if client['ACNTS_CR_CARDS_ALLOWED'] == 1:
+            product_score += 50
+        
+        # Predict future value trend based on engagement and products
+        value_trend = ((engagement_score / 100) * 0.6 + (product_score / 100) * 0.4 - 0.5) * 100
+        predicted_clv = current_clv * (1 + value_trend / 100)
+        
+        metrics = {
+            'current_clv': current_clv,
+            'predicted_clv': predicted_clv,
+            'value_trend': value_trend
+        }
+        
+        # Generate historical and predicted CLV data
+        months = 12
+        historical_clv = []
+        predicted_clv_trend = []
+        
+        for i in range(-months, months + 1):
+            if i <= 0:
+                # Historical data
+                point_value = current_clv * (1 + (i / months) * 0.2)  # Simplified historical trend
+                historical_clv.append(point_value)
+                predicted_clv_trend.append(None)
+            else:
+                # Future predictions
+                historical_clv.append(None)
+                point_value = current_clv * (1 + (i / months) * (value_trend / 100))
+                predicted_clv_trend.append(point_value)
+        
+        # Generate sample retention actions
+        retention_actions = [
+            {
+                'type': 'Personalized Offer',
+                'description': 'Premium account upgrade offer sent',
+                'date': '2025-02-15',
+                'status': 'completed'
+            },
+            {
+                'type': 'Loyalty Program',
+                'description': 'Bonus points campaign',
+                'date': '2025-02-20',
+                'status': 'pending'
+            },
+            {
+                'type': 'Customer Outreach',
+                'description': 'Scheduled account review call',
+                'date': '2025-03-01',
+                'status': 'scheduled'
+            }
+        ]
+        
+        # Calculate risk factors
+        risk_factors = [
+            {
+                'name': 'Transaction Frequency',
+                'impact': -15 if client['ACNTS_DORMANT_ACNT'] == 1 else 10,
+                'description': 'Based on account activity patterns'
+            },
+            {
+                'name': 'Digital Engagement',
+                'impact': engagement_score - 50,  # Normalize to +/- scale
+                'description': 'Based on digital channel usage'
+            },
+            {
+                'name': 'Product Utilization',
+                'impact': product_score - 50,  # Normalize to +/- scale
+                'description': 'Based on product portfolio'
+            }
+        ]
+        
+        # Prepare chart data
+        chart_data = {
+            'clv_trend': {
+                'labels': [f"M{i}" for i in range(-months, months + 1)],
+                'historical': historical_clv,
+                'predicted': predicted_clv_trend
+            },
+            'product_usage': {
+                'labels': ['ATM', 'Internet Banking', 'SMS Banking', 'Credit Card'],
+                'data': [
+                    client['ACNTS_ATM_OPERN'] or 0,
+                    client['ACNTS_INET_OPERN'] or 0,
+                    client['ACNTS_SMS_OPERN'] or 0,
+                    client['ACNTS_CR_CARDS_ALLOWED'] or 0
+                ]
+            },
+            'loyalty': {
+                'labels': [f"Month {i+1}" for i in range(6)],
+                'points': [random.randint(50, 200) for _ in range(6)]  # Sample loyalty points data
+            },
+            'risk_factors': {
+                'labels': ['Transaction Frequency', 'Digital Engagement', 'Product Utilization'],
+                'data': [
+                    100 if client['ACNTS_DORMANT_ACNT'] == 1 else 30,
+                    max(0, 100 - engagement_score),
+                    max(0, 100 - product_score)
+                ]
+            }
+        }
+        
+        conn.close()
+        return render_template('client_details.html',
+                             client=client,
+                             metrics=metrics,
+                             retention_actions=retention_actions,
+                             risk_factors=risk_factors,
+                             chart_data_json=json.dumps(chart_data))
+                             
+    except Exception as e:
+        print(f"Error loading client details: {str(e)}")
+        if conn:
+            conn.close()
+        return jsonify({'error': 'Failed to load client details'}), 500
+
+@app.route('/clients')
+def clients():
+    if 'user' not in session or not session.get('authenticated'):
+        return redirect(url_for('login'))
+    conn = None
+    try:
+        # Get filter parameters
+        status = request.args.get('status', '')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('limit', 20, type=int)
+        search = request.args.get('search', '').strip()
+        
+        conn = get_db()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor()
+        
+        # First get total count with optimized query
+        count_query = """
+            SELECT COUNT(*) as total
+            FROM clients c
+            WHERE c.ACNTS_CLIENT_NUM IS NOT NULL
+                AND c.ACNTS_OPENING_DATE IS NOT NULL
+        """
+        
+        # Pre-calculate status for better performance
+        status_case = """
+            CASE 
+                WHEN c.ACNTS_DORMANT_ACNT = 1 THEN 'Inactive'
+                WHEN c.ACNTS_INOP_ACNT = 1 THEN 'At Risk'
+                ELSE 'Active'
+            END
+        """
+        
+        if status:
+            count_query += f" AND {status_case} = ?"
+        if search:
+            count_query += """
+                AND (
+                    CAST(c.ACNTS_CLIENT_NUM AS TEXT) LIKE ? OR
+                    c.ACNTS_AC_NAME1 LIKE ?
+                )
+            """
+        
+        count_params = []
+        if status:
+            count_params.append(status)
+        if search:
+            search_param = f"%{search}%"
+            count_params.extend([search_param] * 2)
+            
+        cursor.execute(count_query, count_params)
+        total_count = cursor.fetchone()[0]
+        
+        # Build optimized main query
+        query = f"""
+            WITH client_status AS (
+                SELECT 
+                    c.*,
+                    {status_case} as status,
+                    CASE 
+                        WHEN c.ACNTS_PROD_CODE = 3102 THEN 'Premium'
+                        WHEN c.ACNTS_PROD_CODE = 3002 THEN 'Business'
+                        WHEN c.ACNTS_PROD_CODE = 3101 THEN 'Retail'
+                        ELSE 'Other'
+                    END as segment,
+                    CASE 
+                        WHEN c.ACNTS_PROD_CODE = 3102 THEN 5000
+                        WHEN c.ACNTS_PROD_CODE = 3002 THEN 3000
+                        WHEN c.ACNTS_PROD_CODE = 3101 THEN 1000
+                        ELSE 1000
+                    END * (1 + (julianday('now') - julianday(c.ACNTS_OPENING_DATE)) / 365.0 * 0.1) as clv
+                FROM clients c
+                WHERE c.ACNTS_CLIENT_NUM IS NOT NULL
+                    AND c.ACNTS_OPENING_DATE IS NOT NULL
+            )
+            SELECT 
+                cs.ACNTS_CLIENT_NUM as id,
+                COALESCE(cs.ACNTS_AC_NAME1, '') || ' ' || COALESCE(cs.ACNTS_AC_NAME2, '') as name,
+                cs.ACNTS_PROD_CODE,
+                cs.ACNTS_DORMANT_ACNT,
+                cs.ACNTS_INOP_ACNT,
+                cs.ACNTS_LAST_TRAN_DATE,
+                cs.segment,
+                cs.status,
+                cs.clv
+            FROM client_status cs
+            WHERE 1=1
+        """
+        
+        params = []
+        if status:
+            query += " AND cs.status = ?"
+            params.append(status)
+        
+        if search:
+            query += """
+                AND (
+                    CAST(cs.ACNTS_CLIENT_NUM AS TEXT) LIKE ? OR
+                    cs.ACNTS_AC_NAME1 LIKE ?
+                )
+            """
+            search_param = f"%{search}%"
+            params.extend([search_param] * 2)
+        
+        query += """
+            ORDER BY cs.ACNTS_CLIENT_NUM ASC
+            LIMIT ? OFFSET ?
+        """
+        
+        # Calculate pagination
+        offset = (page - 1) * per_page
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        # Calculate pagination
+        total_pages = (total_count + per_page - 1) // per_page
+        
+        # Convert rows to list of dicts
+        clients_data = [dict(row) for row in rows]
+        
+        conn.close()
+        return render_template('clients.html',
+                             clients=clients_data,
+                             status=status,
+                             per_page=per_page,
+                             search=search,
+                             current_page=page,
+                             total_pages=total_pages,
+                             total_count=total_count)
+                             
+    except Exception as e:
+        error_msg = f"Error loading clients: {str(e)}"
+        print(error_msg)
+        import traceback
+        print(traceback.format_exc())
+        if conn:
+            conn.close()
+        return jsonify({'error': error_msg}), 500
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/favicon.ico')
+def favicon():
+    try:
+        return send_from_directory(
+            os.path.join(app.root_path, 'static'),
+            'favicon.ico', 
+            mimetype='image/vnd.microsoft.icon'
+        )
+    except:
+        return '', 404  # Return empty response with 404 if favicon.ico doesn't exist
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
