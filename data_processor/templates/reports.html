@@ -51,6 +51,25 @@
     <!-- Main Content -->
     <div class="pt-20 px-4">
         <div class="max-w-7xl mx-auto">
+            <!-- Period Selection -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <form method="POST" class="flex items-center space-x-4">
+                    <div class="flex-grow">
+                        <label for="period" class="block text-sm font-medium" style="color: var(--navy-blue);">Select Period:</label>
+                        <select id="period" name="period" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#FFD700] focus:ring focus:ring-[#FFD700] focus:ring-opacity-50" style="border: 1px solid var(--navy-blue);">
+                            <option value="1" {% if selected_period == '1' %}selected{% endif %}>Last 1 Month</option>
+                            <option value="3" {% if selected_period == '3' %}selected{% endif %}>Last 3 Months</option>
+                            <option value="6" {% if selected_period == '6' %}selected{% endif %}>Last 6 Months</option>
+                            <option value="12" {% if selected_period == '12' %}selected{% endif %}>Last 12 Months</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button type="submit" class="px-4 py-2 text-white rounded-lg" style="background-color: var(--navy-blue); border: 1px solid var(--gold);">
+                            Apply
+                        </button>
+                    </div>
+                </form>
+            </div>
             <!-- Revenue Overview -->
             <div class="bg-white rounded-lg shadow-lg p-6">
                 <div class="flex justify-between items-center mb-6">

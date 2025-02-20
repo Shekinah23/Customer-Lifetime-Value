@@ -35,7 +35,7 @@ def import_data():
         # Import transactions data if available
         try:
             print("\nImporting transactions data...")
-            trans_df = pd.read_csv('data_processor/datasets/TRANSACTIONS.csv',
+            trans_df = pd.read_csv('data_processor/datasets/all_active_accounts___transacting_.csv',
                                 encoding='utf-8',
                                 low_memory=False,
                                 on_bad_lines='skip')

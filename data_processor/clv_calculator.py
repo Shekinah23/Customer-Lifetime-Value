@@ -40,9 +40,9 @@ def get_customer_data():
     # First get client data
     client_query = """
     SELECT 
-        ACNTS_CLIENT_NUM,
+        CAST(ACNTS_CLIENT_NUM as TEXT) as ACNTS_CLIENT_NUM,
         ACNTS_OPENING_DATE,
-        ACNTS_LAST_TRAN_DATE,
+        COALESCE(ACNTS_LAST_TRAN_DATE, ACNTS_OPENING_DATE) as ACNTS_LAST_TRAN_DATE,
         ACNTS_DORMANT_ACNT,
         ACNTS_AC_TYPE,
         ACNTS_PROD_CODE,
@@ -54,8 +54,7 @@ def get_customer_data():
         ACNTS_AC_NAME1,
         ACNTS_AC_ADDR1
     FROM clients
-    WHERE ACNTS_CLIENT_NUM != ''
-    AND ACNTS_CLIENT_NUM IS NOT NULL
+    WHERE ACNTS_CLIENT_NUM IS NOT NULL
     AND ACNTS_OPENING_DATE IS NOT NULL
     """
     
@@ -109,13 +108,17 @@ def get_customer_data():
 
 def prepare_features(df):
     """Prepare features for churn prediction"""
-    # Calculate account age in days
-    now = pd.Timestamp.now()
-    df['account_age_days'] = (now - pd.to_datetime(df['ACNTS_OPENING_DATE'])).dt.total_seconds() / (24 * 60 * 60)
-    
-    # Calculate days since last transaction
-    df['days_since_last_transaction'] = (now - pd.to_datetime(df['ACNTS_LAST_TRAN_DATE'])).dt.total_seconds() / (24 * 60 * 60)
-    df['days_since_last_transaction'] = df['days_since_last_transaction'].fillna(df['account_age_days'])
+    try:
+        # Calculate account age in days
+        now = pd.Timestamp.now()
+        df['account_age_days'] = (now - pd.to_datetime(df['ACNTS_OPENING_DATE'])).dt.total_seconds() / (24 * 60 * 60)
+        
+        # Calculate days since last transaction
+        df['days_since_last_transaction'] = (now - pd.to_datetime(df['ACNTS_LAST_TRAN_DATE'])).dt.total_seconds() / (24 * 60 * 60)
+        df['days_since_last_transaction'] = df['days_since_last_transaction'].fillna(df['account_age_days'])
+    except Exception as e:
+        print(f"Error preparing features: {e}")
+        raise
     
     # Create digital engagement score
     df['digital_engagement'] = (
@@ -287,43 +290,47 @@ def calculate_clv(df, rf_model, xgb_model, scaler):
     return results
 
 def main():
-    print("Loading models...")
-    rf_model, xgb_model, scaler = load_models()
-    if not all([rf_model, xgb_model, scaler]):
-        print("Error: Could not load models")
-        return
-    
-    print("Loading customer data...")
-    df = get_customer_data()
-    
-    print("Calculating CLV...")
-    results = calculate_clv(df, rf_model, xgb_model, scaler)
-    
-    print("\nCLV Summary Statistics:")
-    print(results['clv'].describe())
-    
-    print("\nCLV Segment Distribution:")
-    print(results['clv_segment'].value_counts(normalize=True))
-    
-    print("\nAverage CLV by Product Type:")
-    avg_clv = results.groupby('ACNTS_PROD_CODE')['clv'].agg(['mean', 'count']).round(2)
-    print(avg_clv)
-    
-    print("\nRetention Rate by Product Type:")
-    avg_retention = results.groupby('ACNTS_PROD_CODE')['retention_rate'].mean().round(2)
-    print(avg_retention)
-    
-    print("\nRetention Rate by CLV Segment:")
-    segment_retention = results.groupby('clv_segment')['retention_rate'].mean().round(2)
-    print(segment_retention)
-    
-    print("\nSample Customer CLV Values:")
-    print(results.head().round(2))
-    
-    # Save results
-    output_path = 'data_processor/customer_clv.csv'
-    results.to_csv(output_path, index=False)
-    print(f"\nResults saved to: {output_path}")
+    try:
+        print("Loading models...")
+        rf_model, xgb_model, scaler = load_models()
+        if not all([rf_model, xgb_model, scaler]):
+            print("Error: Could not load models")
+            return
+        
+        print("Loading customer data...")
+        df = get_customer_data()
+        
+        print("Calculating CLV...")
+        results = calculate_clv(df, rf_model, xgb_model, scaler)
+        
+        print("\nCLV Summary Statistics:")
+        print(results['clv'].describe())
+        
+        print("\nCLV Segment Distribution:")
+        print(results['clv_segment'].value_counts(normalize=True))
+        
+        print("\nAverage CLV by Product Type:")
+        avg_clv = results.groupby('ACNTS_PROD_CODE')['clv'].agg(['mean', 'count']).round(2)
+        print(avg_clv)
+        
+        print("\nRetention Rate by Product Type:")
+        avg_retention = results.groupby('ACNTS_PROD_CODE')['retention_rate'].mean().round(2)
+        print(avg_retention)
+        
+        print("\nRetention Rate by CLV Segment:")
+        segment_retention = results.groupby('clv_segment')['retention_rate'].mean().round(2)
+        print(segment_retention)
+        
+        print("\nSample Customer CLV Values:")
+        print(results.head().round(2))
+        
+        # Save results
+        output_path = 'data_processor/customer_clv.csv'
+        results.to_csv(output_path, index=False)
+        print(f"\nResults saved to: {output_path}")
+    except Exception as e:
+        print(f"Error in main execution: {e}")
+        raise
 
 if __name__ == "__main__":
     main()

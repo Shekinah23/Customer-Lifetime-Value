@@ -126,13 +126,37 @@
                 </div>
             </div>
 
+            <!-- Churn Risk Factors -->
+            <div class="chart-card rounded-lg p-6 mb-8">
+                <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Churn Risk Factors</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="relative h-64">
+                        <canvas id="churnFactorsChart"></canvas>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="metric-card p-4 rounded">
+                            <h4 class="font-semibold text-sm" style="color: var(--navy-blue);">Factor Details</h4>
+                            <ul class="mt-2 space-y-2 text-sm" id="churnFactorDetails">
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Charts -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <!-- Customer Segments -->
                 <div class="chart-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Customer Segments</h3>
-                    <div class="relative h-64">
-                        <canvas id="customerSegmentsChart"></canvas>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="relative h-64">
+                            <canvas id="customerSegmentsChart"></canvas>
+                        </div>
+                        <div class="space-y-2">
+                            <h4 class="font-semibold text-sm" style="color: var(--navy-blue);">Segment Profitability</h4>
+                            <ul class="space-y-3" id="segmentDetails">
+                            </ul>
+                        </div>
                     </div>
                 </div>
 
@@ -258,6 +282,7 @@
                 });
             }
             
+            // Customer Segments Chart with Profitability Highlights
             new Chart(document.getElementById('customerSegmentsChart').getContext('2d'), {
                 type: 'pie',
                 data: {
@@ -265,17 +290,63 @@
                     datasets: [{
                         data: data.segments.data,
                         backgroundColor: [
-                            chartConfig.colors.primary,
-                            chartConfig.colors.secondary,
-                            chartConfig.colors.tertiary,
-                            chartConfig.colors.quaternary
-                        ]
+                            'rgba(0, 128, 0, 0.8)',  // Dark green for most profitable
+                            'rgba(144, 238, 144, 0.8)',  // Light green for profitable
+                            'rgba(255, 215, 0, 0.8)',  // Gold for moderate
+                            'rgba(255, 99, 71, 0.8)'   // Tomato for trial/new
+                        ],
+                        borderColor: [
+                            'rgb(0, 128, 0)',
+                            'rgb(144, 238, 144)',
+                            'rgb(255, 215, 0)',
+                            'rgb(255, 99, 71)'
+                        ],
+                        borderWidth: 1
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const index = context.dataIndex;
+                                    return [
+                                        `Revenue: $${data.segments.profitability[index].toLocaleString()}`,
+                                        `Growth: ${data.segments.growth_rate[index]}%`,
+                                        data.segments.descriptions[index]
+                                    ];
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'right'
+                        }
+                    }
                 }
+            });
+
+            // Populate segment details
+            const segmentDetails = document.getElementById('segmentDetails');
+            data.segments.labels.forEach((label, index) => {
+                const li = document.createElement('li');
+                li.className = 'p-2 rounded border border-gray-200';
+                const profitClass = index === 0 ? 'text-green-800' : 
+                                  index === 1 ? 'text-green-600' :
+                                  index === 2 ? 'text-yellow-600' : 'text-red-500';
+                li.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium ${profitClass}">${label}</span>
+                        <span class="font-bold">$${data.segments.profitability[index].toLocaleString()}</span>
+                    </div>
+                    <div class="text-xs text-gray-600 mt-1">
+                        <span class="inline-block mr-4">Growth: ${data.segments.growth_rate[index]}%</span>
+                        <span>Share: ${data.segments.data[index]}%</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">${data.segments.descriptions[index]}</div>
+                `;
+                segmentDetails.appendChild(li);
             });
 
             new Chart(document.getElementById('revenueTrendsChart').getContext('2d'), {
@@ -330,6 +401,71 @@
                     maintainAspectRatio: false
                 }
             });
+
+            // Churn Risk Factors Chart
+            if (data.churn_factors) {
+                new Chart(document.getElementById('churnFactorsChart').getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.churn_factors.labels,
+                        datasets: [{
+                            label: 'Risk Level (%)',
+                            data: data.churn_factors.data,
+                            backgroundColor: [
+                                'rgba(239, 68, 68, 0.7)',   // Red for time-based
+                                'rgba(16, 185, 129, 0.7)',  // Green for digital
+                                'rgba(59, 130, 246, 0.7)',  // Blue for products
+                                'rgba(245, 158, 11, 0.7)'   // Orange for status
+                            ],
+                            borderColor: [
+                                'rgb(239, 68, 68)',
+                                'rgb(16, 185, 129)',
+                                'rgb(59, 130, 246)',
+                                'rgb(245, 158, 11)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                title: {
+                                    display: true,
+                                    text: 'Risk Level (%)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: function(context) {
+                                        return data.churn_factors.descriptions[context.dataIndex];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Populate factor details
+                const detailsList = document.getElementById('churnFactorDetails');
+                data.churn_factors.labels.forEach((label, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'flex flex-col';
+                    li.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium">${label}</span>
+                            <span class="font-bold">${data.churn_factors.data[index].toFixed(1)}%</span>
+                        </div>
+                        <span class="text-xs text-gray-600">${data.churn_factors.descriptions[index]}</span>
+                    `;
+                    detailsList.appendChild(li);
+                });
+            }
         });
     </script>
 </body>
