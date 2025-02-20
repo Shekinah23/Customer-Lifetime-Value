@@ -204,13 +204,6 @@
                         </a>
                         {% endif %}
                         
-                        {% for p in range(1, total_pages + 1) %}
-                        <a href="{{ url_for('clients', page=p, status=status, limit=per_page, search=search) }}"
-                           class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium 
-                                  {% if p == current_page %}text-navy-blue bg-blue-50{% else %}text-gray-700 hover:bg-gray-50{% endif %}">
-                            {{ p }}
-                        </a>
-                        {% endfor %}
                         
                         {% if current_page < total_pages %}
                         <a href="{{ url_for('clients', page=current_page+1, status=status, limit=per_page, search=search) }}"
