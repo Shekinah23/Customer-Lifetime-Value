@@ -199,15 +199,18 @@
                     <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                         {% if current_page > 1 %}
                         <a href="{{ url_for('clients', page=current_page-1, status=status, limit=per_page, search=search) }}" 
-                           class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                           class="relative inline-flex items-center px-4 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
                             Previous
                         </a>
                         {% endif %}
                         
+                        <span class="px-4 py-2 border-t border-b border-gray-300 bg-white text-sm text-gray-700">
+                            Page {{ current_page }} of {{ total_pages }}
+                        </span>
                         
                         {% if current_page < total_pages %}
                         <a href="{{ url_for('clients', page=current_page+1, status=status, limit=per_page, search=search) }}"
-                           class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                           class="relative inline-flex items-center px-4 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
                             Next
                         </a>
                         {% endif %}

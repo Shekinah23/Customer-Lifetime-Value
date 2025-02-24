@@ -1,11 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, send_from_directory, make_response
 from functools import wraps
 import os
 import sqlite3
 import json
 import random
 import pandas as pd
-from datetime import timedelta
+import pdfkit
+from datetime import datetime, timedelta
 from churn_predictor import calculate_churn_probability
 
 app = Flask(__name__, 
@@ -421,6 +422,133 @@ def client_details(client_id):
             conn.close()
         return jsonify({'error': 'Failed to load client details'}), 500
 
+@app.route('/products')
+@login_required
+def products():
+    conn = None
+    try:
+        conn = get_db()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        cursor = conn.cursor()
+        
+        # Get filter parameters
+        search = request.args.get('search', '').strip()
+        limit = request.args.get('limit', type=int)
+        
+        # Build query with DISTINCT on product fields
+        query = """
+            SELECT DISTINCT 
+                p.PRODUCT_CODE,
+                p.PRODUCT_NAME,
+                p.PRODUCT_GROUP_CODE,
+                p.PRODUCT_CLASS,
+                p.PRODUCT_FOR_DEPOSITS,
+                p.PRODUCT_FOR_LOANS,
+                p.PRODUCT_REVOKED_ON,
+                (
+                    SELECT json_group_object(
+                        'charge',
+                        json_object(
+                            'CHARGES_CHG_AMT_CHOICE', c.CHARGES_CHG_AMT_CHOICE,
+                            'CHARGES_FIXED_AMT', c.CHARGES_FIXED_AMT,
+                            'CHARGES_CHG_CURR', c.CHARGES_CHG_CURR,
+                            'CHARGES_CHGS_PERCENTAGE', c.CHARGES_CHGS_PERCENTAGE
+                        )
+                    )
+                    FROM charges c 
+                    WHERE c.CHARGES_PROD_CODE = p.PRODUCT_CODE
+                    LIMIT 1
+                ) as charge_info
+            FROM products p 
+            WHERE 1=1
+        """
+        params = []
+        
+        if search:
+            query += """
+                AND (
+                    CAST(p.PRODUCT_CODE AS TEXT) LIKE ? OR
+                    p.PRODUCT_NAME LIKE ? OR
+                    p.PRODUCT_GROUP_CODE LIKE ? OR
+                    p.PRODUCT_CLASS LIKE ?
+                )
+            """
+            search_param = f"%{search}%"
+            params.extend([search_param] * 4)
+            
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+            
+        cursor.execute(query, params)
+        products = []
+        for row in cursor.fetchall():
+            product = dict(row)
+            # Calculate lifecycle stage based on some metrics
+            if not product['PRODUCT_REVOKED_ON']:
+                product['lifecycle_stage'] = 'Growth'
+            else:
+                product['lifecycle_stage'] = 'Decline'
+            
+            # Parse charge information from JSON
+            if product['charge_info']:
+                charge_data = json.loads(product['charge_info'])
+                product['charge'] = charge_data.get('charge')
+            else:
+                product['charge'] = None
+            
+            # Remove the JSON string from the final product object
+            del product['charge_info']
+            
+            products.append(product)
+            
+        # Sample analysis data
+        analysis = {
+            'total_sales': 150000.00,
+            'avg_clv': 2500.00,
+            'revenue': 75000.00,
+            'bundle_recommendations': [
+                {
+                    'name': 'Premium Bundle',
+                    'description': 'High-value product combination',
+                    'products': [
+                        {'name': 'Premium Savings', 'adoption_rate': 45.5},
+                        {'name': 'Investment Account', 'adoption_rate': 32.8}
+                    ],
+                    'revenue_increase': 25,
+                    'pair_count': 150
+                }
+            ]
+        }
+        
+        analysis_json = json.dumps({
+            'sales': {
+                'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                'data': [1000, 1200, 1100, 1400, 1300, 1500]
+            },
+            'segments': {
+                'labels': ['Premium', 'Standard', 'Basic', 'Trial'],
+                'data': [40, 30, 20, 10]
+            },
+            'bundle_recommendations': analysis['bundle_recommendations']
+        })
+        
+        conn.close()
+        return render_template('products.html',
+                             products=products,
+                             search=search,
+                             limit=limit,
+                             analysis=analysis,
+                             analysis_json=analysis_json)
+                             
+    except Exception as e:
+        print(f"Error loading products: {str(e)}")
+        if conn:
+            conn.close()
+        return jsonify({'error': 'Failed to load products'}), 500
+
 @app.route('/clients')
 def clients():
     if 'user' not in session or not session.get('authenticated'):
@@ -440,12 +568,10 @@ def clients():
         cursor = conn.cursor()
         
         # First get total count with optimized query
-        count_query = """
-            SELECT COUNT(*) as total
-            FROM clients c
-            WHERE c.ACNTS_CLIENT_NUM IS NOT NULL
-                AND c.ACNTS_OPENING_DATE IS NOT NULL
-        """
+        count_query = """SELECT COUNT(*) as total
+FROM clients c
+WHERE c.ACNTS_CLIENT_NUM IS NOT NULL
+    AND c.ACNTS_OPENING_DATE IS NOT NULL"""
         
         # Pre-calculate status for better performance
         status_case = """
@@ -563,6 +689,266 @@ def clients():
         if conn:
             conn.close()
         return jsonify({'error': error_msg}), 500
+
+@app.route('/reports', methods=['GET', 'POST'])
+@login_required
+def reports():
+    # Get selected period (default to 1 month)
+    selected_period = request.form.get('period', '1')
+    months = int(selected_period)
+    
+    conn = None
+    try:
+        conn = get_db()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        cursor = conn.cursor()
+        
+        # Calculate date range
+        cursor.execute("""
+            WITH date_range AS (
+                SELECT date('now', '-' || ? || ' months') as start_date,
+                       date('now') as end_date
+            )
+            SELECT 
+                COUNT(DISTINCT c.ACNTS_CLIENT_NUM) as contributing_clients,
+                SUM(CASE 
+                    WHEN c.ACNTS_PROD_CODE = 3102 THEN 5000 * ?
+                    WHEN c.ACNTS_PROD_CODE = 3002 THEN 3000 * ?
+                    WHEN c.ACNTS_PROD_CODE = 3101 THEN 1000 * ?
+                    ELSE 1000 * ?
+                END) as total_revenue,
+                SUM(CASE 
+                    WHEN c.ACNTS_PROD_CODE IN (3102, 3002) THEN 2000 * ?
+                    ELSE 500 * ?
+                END) as total_assets,
+                SUM(CASE 
+                    WHEN c.ACNTS_DORMANT_ACNT = 1 THEN 300 * ?
+                    ELSE 100 * ?
+                END) as total_expenses,
+                SUM(CASE 
+                    WHEN c.ACNTS_INOP_ACNT = 1 THEN 200 * ?
+                    ELSE 50 * ?
+                END) as total_liabilities
+            FROM clients c, date_range
+            WHERE c.ACNTS_OPENING_DATE <= date_range.end_date
+                AND (c.ACNTS_LAST_TRAN_DATE >= date_range.start_date OR c.ACNTS_LAST_TRAN_DATE IS NULL)
+        """, (months, months, months, months, months, months, months, months, months, months, months))
+        
+        result = cursor.fetchone()
+        
+        # Calculate metrics based on query results
+        total_revenue = result['total_revenue'] or 0
+        total_assets = result['total_assets'] or 0
+        total_expenses = result['total_expenses'] or 0
+        total_liabilities = result['total_liabilities'] or 0
+        
+        revenue_metrics = {
+            'net_total_revenue': total_revenue + total_assets - total_expenses - total_liabilities,
+            'total_revenue': total_revenue,
+            'total_assets': total_assets,
+            'total_expenses': total_expenses,
+            'total_liabilities': total_liabilities,
+            'contributing_clients': result['contributing_clients'] or 0
+        }
+        
+        # Sample churn metrics
+        churn_metrics = {
+            'churn_rate': 5.2,
+            'at_risk_count': 45,
+            'churned_value': 75000.00,
+            'retention_rate': 94.8,
+            'top_factors': [
+                {
+                    'name': 'Account Inactivity',
+                    'impact': 2.5,
+                    'description': 'Extended periods without transactions',
+                    'severity': 75
+                },
+                {
+                    'name': 'Digital Engagement',
+                    'impact': 1.8,
+                    'description': 'Low usage of digital banking services',
+                    'severity': 60
+                },
+                {
+                    'name': 'Product Utilization',
+                    'impact': 1.2,
+                    'description': 'Limited product relationships',
+                    'severity': 45
+                },
+                {
+                    'name': 'Balance Trends',
+                    'impact': -0.3,
+                    'description': 'Improving average balance levels',
+                    'severity': 25
+                }
+            ]
+        }
+        
+        # Sample segmentation data
+        segmentation = {
+            'segments': [
+                {
+                    'name': 'Premium',
+                    'count': 250,
+                    'percentage': 25.0,
+                    'avg_revenue': 5000.00,
+                    'total_value': 1250000.00,
+                    'characteristics': [
+                        'High transaction volume',
+                        'Multiple product relationships',
+                        'Regular digital banking users',
+                        'Long-term customers'
+                    ]
+                },
+                {
+                    'name': 'Standard',
+                    'count': 450,
+                    'percentage': 45.0,
+                    'avg_revenue': 2000.00,
+                    'total_value': 900000.00,
+                    'characteristics': [
+                        'Moderate transaction frequency',
+                        'Basic product portfolio',
+                        'Mixed channel usage',
+                        'Stable relationships'
+                    ]
+                },
+                {
+                    'name': 'Basic',
+                    'count': 200,
+                    'percentage': 20.0,
+                    'avg_revenue': 800.00,
+                    'total_value': 160000.00,
+                    'characteristics': [
+                        'Low transaction volume',
+                        'Single product users',
+                        'Limited digital engagement',
+                        'Newer relationships'
+                    ]
+                },
+                {
+                    'name': 'New',
+                    'count': 100,
+                    'percentage': 10.0,
+                    'avg_revenue': 400.00,
+                    'total_value': 40000.00,
+                    'characteristics': [
+                        'Recent account openings',
+                        'Basic services only',
+                        'Building relationship',
+                        'High growth potential'
+                    ]
+                }
+            ],
+            'chart_data': {
+                'labels': ['Premium', 'Standard', 'Basic', 'New'],
+                'data': [1250000.00, 900000.00, 160000.00, 40000.00]
+            }
+        }
+        
+        return render_template('reports.html',
+                             selected_period=selected_period,
+                             revenue_metrics=revenue_metrics,
+                             churn_metrics=churn_metrics,
+                             segmentation=segmentation)
+                             
+    except Exception as e:
+        print(f"Error loading reports: {str(e)}")
+        if conn:
+            conn.close()
+        return jsonify({'error': 'Failed to load reports'}), 500
+
+def generate_pdf_report(template_name, **kwargs):
+    """Generate a PDF report from a template"""
+    # Configure pdfkit options
+    options = {
+        'page-size': 'Letter',
+        'margin-top': '20mm',
+        'margin-right': '20mm',
+        'margin-bottom': '20mm',
+        'margin-left': '20mm',
+        'encoding': 'UTF-8',
+        'no-outline': None,
+        'enable-local-file-access': None
+    }
+    
+    # Render the template
+    rendered = render_template(template_name, **kwargs)
+    
+    # Generate PDF
+    pdf = pdfkit.from_string(rendered, False, options=options)
+    return pdf
+
+@app.route('/download_report_pdf')
+@login_required
+def download_report_pdf():
+    try:
+        # Get the current period and metrics
+        selected_period = request.args.get('period', '1')
+        period_map = {'1': 'Last Month', '3': 'Last 3 Months', '6': 'Last 6 Months', '12': 'Last Year'}
+        period_text = period_map.get(selected_period, 'Last Month')
+        
+        # Get report type
+        report_type = request.args.get('type', 'full')
+        filename = f"{report_type}_report.pdf"
+        
+        # Get current metrics from the reports route
+        metrics = reports()
+        if isinstance(metrics, tuple):  # Error case
+            return metrics
+            
+        # Generate PDF using the template
+        pdf = generate_pdf_report(
+            'pdf_report.html',
+            revenue_metrics=metrics.get('revenue_metrics', {}),
+            churn_metrics=metrics.get('churn_metrics', {}),
+            segmentation=metrics.get('segmentation', {}),
+            period_text=period_text,
+            datetime=datetime
+        )
+        
+        # Create response
+        response = make_response(pdf)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        return response
+    except Exception as e:
+        print(f"Error generating PDF: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/product/analytics')
+@login_required
+def product_analytics():
+    try:
+        # Return sample analytics data
+        data = {
+            'sales_trend': {
+                'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                'data': [1000, 1200, 1100, 1400, 1300, 1500]
+            },
+            'revenue_segments': {
+                'labels': ['Premium', 'Standard', 'Basic', 'Trial'],
+                'data': [40, 30, 20, 10]
+            },
+            'bundle_recommendations': [
+                {
+                    'name': 'Premium Bundle',
+                    'description': 'High-value product combination',
+                    'products': [
+                        {'name': 'Premium Savings', 'adoption_rate': 45.5},
+                        {'name': 'Investment Account', 'adoption_rate': 32.8}
+                    ],
+                    'revenue_increase': 25,
+                    'pair_count': 150
+                }
+            ]
+        }
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/logout')
 def logout():

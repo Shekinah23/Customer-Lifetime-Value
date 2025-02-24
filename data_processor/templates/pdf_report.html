@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CLV Analytics Report</title>
+    <style>
+        @page {
+            size: letter portrait;
+            margin: 2cm;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 2em;
+            border-bottom: 2px solid #000080;
+            padding-bottom: 1em;
+        }
+        .logo {
+            max-width: 150px;
+            margin-bottom: 1em;
+        }
+        h1 {
+            color: #000080;
+            font-size: 24px;
+            margin: 0;
+        }
+        h2 {
+            color: #000080;
+            font-size: 20px;
+            margin-top: 1.5em;
+            border-bottom: 1px solid #000080;
+            padding-bottom: 0.5em;
+        }
+        .metric-card {
+            margin: 1em 0;
+            padding: 1em;
+            border: 1px solid #000080;
+            break-inside: avoid;
+        }
+        .metric-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #000080;
+        }
+        .metric-label {
+            font-size: 14px;
+            color: #666;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1em;
+            margin: 1em 0;
+        }
+        .chart-container {
+            margin: 2em 0;
+            page-break-inside: avoid;
+        }
+        .footer {
+            margin-top: 2em;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #ccc;
+            padding-top: 1em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1em 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #000080;
+            color: white;
+        }
+        .red { color: #dc2626; }
+        .green { color: #16a34a; }
+        .amber { color: #d97706; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="{{ url_for('static', filename='logo/logo.png', _external=True) }}" alt="Logo" class="logo">
+        <h1>CLV Analytics Report</h1>
+        <p>Generated on {{ datetime.now().strftime('%B %d, %Y at %I:%M %p') }}</p>
+        <p>Period: {{ period_text }}</p>
+    </div>
+
+    <h2>Revenue Overview</h2>
+    <div class="grid">
+        <div class="metric-card">
+            <div class="metric-value">${{ "{:,.2f}".format(revenue_metrics.net_total_revenue) }}</div>
+            <div class="metric-label">Net Total Revenue</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ revenue_metrics.contributing_clients }}</div>
+            <div class="metric-label">Contributing Clients</div>
+        </div>
+    </div>
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Value</th>
+        </tr>
+        <tr>
+            <td>Total Revenue</td>
+            <td>${{ "{:,.2f}".format(revenue_metrics.total_revenue) }}</td>
+        </tr>
+        <tr>
+            <td>Total Assets</td>
+            <td>${{ "{:,.2f}".format(revenue_metrics.total_assets) }}</td>
+        </tr>
+        <tr>
+            <td>Total Expenses</td>
+            <td class="red">${{ "{:,.2f}".format(revenue_metrics.total_expenses) }}</td>
+        </tr>
+        <tr>
+            <td>Total Liabilities</td>
+            <td class="red">${{ "{:,.2f}".format(revenue_metrics.total_liabilities) }}</td>
+        </tr>
+    </table>
+
+    <h2>Churn Analysis</h2>
+    <div class="grid">
+        <div class="metric-card">
+            <div class="metric-value">{{ "{:.1f}%".format(churn_metrics.churn_rate) }}</div>
+            <div class="metric-label">Churn Rate</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ "{:.1f}%".format(churn_metrics.retention_rate) }}</div>
+            <div class="metric-label">Retention Rate</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value amber">{{ churn_metrics.at_risk_count }}</div>
+            <div class="metric-label">At Risk Accounts</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value red">${{ "{:,.2f}".format(churn_metrics.churned_value) }}</div>
+            <div class="metric-label">Churned Value</div>
+        </div>
+    </div>
+
+    <h3>Top Churn Factors</h3>
+    <table>
+        <tr>
+            <th>Factor</th>
+            <th>Impact</th>
+            <th>Description</th>
+        </tr>
+        {% for factor in churn_metrics.top_factors %}
+        <tr>
+            <td>{{ factor.name }}</td>
+            <td class="{{ 'red' if factor.impact > 0 else 'green' }}">{{ "{:+.1f}%".format(factor.impact) }}</td>
+            <td>{{ factor.description }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>Customer Segmentation</h2>
+    <div class="grid">
+        {% for segment in segmentation.segments %}
+        <div class="metric-card">
+            <h3>{{ segment.name }}</h3>
+            <div class="metric-value">{{ segment.count }}</div>
+            <div class="metric-label">{{ "{:.1f}%".format(segment.percentage) }} of customer base</div>
+            <p>Avg. Revenue: ${{ "{:,.2f}".format(segment.avg_revenue) }}</p>
+            <p>Total Value: ${{ "{:,.2f}".format(segment.total_value) }}</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="footer">
+        <p>This report is confidential and for internal use only.</p>
+        <p>© {{ datetime.now().year }} CLV Analytics. All rights reserved.</p>
+    </div>
+</body>
+</html>

@@ -205,7 +205,6 @@
             window.location.href = '/logout';
         }
 
-        // Show loading indicator
         function showLoading() {
             const loader = document.createElement('div');
             loader.className = 'loading';
@@ -213,7 +212,6 @@
             document.body.appendChild(loader);
         }
 
-        // Hide loading indicator
         function hideLoading() {
             const loader = document.querySelector('.loading');
             if (loader) {
@@ -221,152 +219,149 @@
             }
         }
 
-        // Initialize a chart with loading state
-        function initializeChart(chartId, callback) {
-            const container = document.getElementById(chartId).parentElement;
-            container.classList.remove('loaded');
-            callback().then(() => {
-                container.classList.add('loaded');
-            });
+        function createChart(chartId, config) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            return new Chart(ctx, config);
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function initializeCharts() {
             showLoading();
-
-            // Initialize charts asynchronously
-            Promise.all([
-                initializeChart('clvTrendChart', async () => {
             const data = {{ chart_data_json|safe }};
-            
-            // CLV Trend Chart
-            await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for smoother loading
-            new Chart(document.getElementById('clvTrendChart').getContext('2d'), {
-                type: 'line',
-                data: {
-                    labels: data.clv_trend.labels,
-                    datasets: [{
-                        label: 'Historical CLV',
-                        data: data.clv_trend.historical,
-                        borderColor: 'rgb(0, 0, 128)',
-                        backgroundColor: 'rgba(0, 0, 128, 0.1)',
-                        tension: 0.4
-                    }, {
-                        label: 'Predicted CLV',
-                        data: data.clv_trend.predicted,
-                        borderColor: 'rgb(255, 215, 0)',
-                        backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                        borderDash: [5, 5],
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Customer Lifetime Value ($)'
+
+            try {
+                // CLV Trend Chart
+                await delay(100);
+                const clvChart = createChart('clvTrendChart', {
+                    type: 'line',
+                    data: {
+                        labels: data.clv_trend.labels,
+                        datasets: [{
+                            label: 'Historical CLV',
+                            data: data.clv_trend.historical,
+                            borderColor: 'rgb(0, 0, 128)',
+                            backgroundColor: 'rgba(0, 0, 128, 0.1)',
+                            tension: 0.4
+                        }, {
+                            label: 'Predicted CLV',
+                            data: data.clv_trend.predicted,
+                            borderColor: 'rgb(255, 215, 0)',
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                            borderDash: [5, 5],
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Customer Lifetime Value ($)'
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
 
-            }),
-            initializeChart('productUsageChart', async () => {
-            await new Promise(resolve => setTimeout(resolve, 200));
-            new Chart(document.getElementById('productUsageChart').getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: data.product_usage.labels,
-                    datasets: [{
-                        label: 'Usage Frequency',
-                        data: data.product_usage.data,
-                        backgroundColor: 'rgba(0, 0, 128, 0.7)'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Usage Count'
+                // Product Usage Chart
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await createChart('productUsageChart', {
+                    type: 'bar',
+                    data: {
+                        labels: data.product_usage.labels,
+                        datasets: [{
+                            label: 'Usage Frequency',
+                            data: data.product_usage.data,
+                            backgroundColor: 'rgba(0, 0, 128, 0.7)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Usage Count'
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
 
-            }),
-            initializeChart('loyaltyChart', async () => {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            new Chart(document.getElementById('loyaltyChart').getContext('2d'), {
-                type: 'line',
-                data: {
-                    labels: data.loyalty.labels,
-                    datasets: [{
-                        label: 'Points Earned',
-                        data: data.loyalty.points,
-                        borderColor: 'rgb(255, 215, 0)',
-                        backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Loyalty Points'
+                // Loyalty Chart
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await createChart('loyaltyChart', {
+                    type: 'line',
+                    data: {
+                        labels: data.loyalty.labels,
+                        datasets: [{
+                            label: 'Points Earned',
+                            data: data.loyalty.points,
+                            borderColor: 'rgb(255, 215, 0)',
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Loyalty Points'
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
 
-            }),
-            initializeChart('riskFactorsChart', async () => {
-            await new Promise(resolve => setTimeout(resolve, 400));
-            new Chart(document.getElementById('riskFactorsChart').getContext('2d'), {
-                type: 'radar',
-                data: {
-                    labels: data.risk_factors.labels,
-                    datasets: [{
-                        label: 'Risk Level',
-                        data: data.risk_factors.data,
-                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                        borderColor: 'rgb(255, 99, 132)',
-                        pointBackgroundColor: 'rgb(255, 99, 132)',
-                        pointBorderColor: '#fff',
-                        pointHoverBackgroundColor: '#fff',
-                        pointHoverBorderColor: 'rgb(255, 99, 132)'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        r: {
-                            beginAtZero: true,
-                            max: 100
+                // Risk Factors Chart
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await createChart('riskFactorsChart', {
+                    type: 'radar',
+                    data: {
+                        labels: data.risk_factors.labels,
+                        datasets: [{
+                            label: 'Risk Level',
+                            data: data.risk_factors.data,
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderColor: 'rgb(255, 99, 132)',
+                            pointBackgroundColor: 'rgb(255, 99, 132)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgb(255, 99, 132)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                beginAtZero: true,
+                                max: 100
+                            }
                         }
                     }
-                }
-            })
-            ]).then(() => {
+                });
+            } catch (error) {
+                console.error('Error initializing charts:', error);
+            } finally {
                 hideLoading();
-            });
-        });
+            }
+        }
 
-        // Handle back button with loading state
+        document.addEventListener('DOMContentLoaded', initializeCharts);
+
         document.querySelector('a[href="/clients"]').addEventListener('click', function(e) {
             e.preventDefault();
             showLoading();
