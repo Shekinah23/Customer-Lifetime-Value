@@ -61,6 +61,10 @@
             animation-delay: 1.5s;
             margin-top: 50px;
         }
+        .card-5 {
+            animation-delay: 2s;
+            margin-top: 0;
+        }
 
         @keyframes float {
             0% {
@@ -103,7 +107,7 @@
     <!-- Main Content -->
     <main class="flex-grow container mx-auto px-4 pt-24 pb-16">
         <div class="flex flex-col items-center max-w-6xl mx-auto">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 w-full">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 w-full">
                 <!-- Analytics Card -->
                 <div>
                     <a href="/dashboard" class="nav-card card-1 rounded-lg p-8 block">
@@ -149,6 +153,18 @@
                             </svg>
                             <h2 class="text-2xl font-semibold">Reports</h2>
                             <p class="text-center text-base opacity-75">Access detailed reports</p>
+                        </div>
+                    </a>
+                </div>
+                <!-- Data Quality Card -->
+                <div>
+                    <a href="/data-quality" class="nav-card card-5 rounded-lg p-8 block">
+                        <div class="flex flex-col items-center space-y-6 relative z-10">
+                            <svg class="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <h2 class="text-2xl font-semibold">Data Quality</h2>
+                            <p class="text-center text-base opacity-75">Manage data quality issues</p>
                         </div>
                     </a>
                 </div>

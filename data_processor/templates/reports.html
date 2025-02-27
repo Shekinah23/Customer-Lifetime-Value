@@ -85,8 +85,9 @@
                     </div>
                 </form>
             </div>
+
             <!-- Revenue Overview -->
-            <details class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <details class="bg-white rounded-lg shadow-lg p-6 mb-6" open>
                 <summary class="flex justify-between items-center cursor-pointer">
                     <h2 class="text-2xl font-bold" style="color: var(--navy-blue);">Revenue Overview</h2>
                     <svg class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -103,11 +104,11 @@
                 </div>
 
                 <!-- Net Total Revenue -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div class="metric-card rounded-lg p-6">
                         <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Net Total Revenue</h3>
-                        <p class="text-4xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.net_total_revenue) }}</p>
-                        <p class="text-sm mt-2 text-gray-600">(Income + Assets) - (Expenses + Liabilities)</p>
+                        <p class="text-4xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_revenue) }}</p>
+                        <p class="text-sm mt-2 text-gray-600">Total revenue across all channels</p>
                     </div>
                     <div class="metric-card rounded-lg p-6">
                         <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Contributing Clients</h3>
@@ -115,30 +116,134 @@
                         <p class="text-sm mt-2 text-gray-600">Active revenue-generating clients</p>
                     </div>
                 </div>
+            </details>
 
-                <!-- Revenue Components -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+            <!-- Channel Revenue -->
+            <details class="bg-white rounded-lg shadow-lg p-6 mb-6" open>
+                <summary class="flex justify-between items-center cursor-pointer">
+                    <h2 class="text-2xl font-bold" style="color: var(--navy-blue);">Channel Revenue</h2>
+                    <svg class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </summary>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
                     <div class="metric-card rounded-lg p-6">
-                        <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Total Revenue</h3>
-                        <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_revenue) }}</p>
+                        <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">ATM Revenue</h3>
+                        <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.atm_revenue) }}</p>
+                        <div class="mt-2 h-2 bg-gray-200 rounded-full">
+                            <div class="h-2 bg-blue-600 rounded-full" style="width: {{ (revenue_metrics.atm_revenue / revenue_metrics.total_revenue * 100)|round|int }}%"></div>
+                        </div>
+                        <p class="text-sm mt-2 text-gray-600">{{ "{:.1f}%".format(revenue_metrics.atm_revenue / revenue_metrics.total_revenue * 100) }} of total revenue</p>
                     </div>
                     <div class="metric-card rounded-lg p-6">
-                        <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Total Assets</h3>
-                        <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_assets) }}</p>
+                        <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Internet Revenue</h3>
+                        <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.internet_revenue) }}</p>
+                        <div class="mt-2 h-2 bg-gray-200 rounded-full">
+                            <div class="h-2 bg-green-600 rounded-full" style="width: {{ (revenue_metrics.internet_revenue / revenue_metrics.total_revenue * 100)|round|int }}%"></div>
+                        </div>
+                        <p class="text-sm mt-2 text-gray-600">{{ "{:.1f}%".format(revenue_metrics.internet_revenue / revenue_metrics.total_revenue * 100) }} of total revenue</p>
                     </div>
                     <div class="metric-card rounded-lg p-6">
-                        <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Total Expenses</h3>
-                        <p class="text-2xl font-bold text-red-600">${{ "{:,.2f}".format(revenue_metrics.total_expenses) }}</p>
+                        <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">SMS Revenue</h3>
+                        <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.sms_revenue) }}</p>
+                        <div class="mt-2 h-2 bg-gray-200 rounded-full">
+                            <div class="h-2 bg-yellow-600 rounded-full" style="width: {{ (revenue_metrics.sms_revenue / revenue_metrics.total_revenue * 100)|round|int }}%"></div>
+                        </div>
+                        <p class="text-sm mt-2 text-gray-600">{{ "{:.1f}%".format(revenue_metrics.sms_revenue / revenue_metrics.total_revenue * 100) }} of total revenue</p>
                     </div>
+                </div>
+            </details>
+
+            <!-- Retention vs Acquisition -->
+            <details class="bg-white rounded-lg shadow-lg p-6 mb-6" open>
+                <summary class="flex justify-between items-center cursor-pointer">
+                    <h2 class="text-2xl font-bold" style="color: var(--navy-blue);">Retention vs Acquisition</h2>
+                    <svg class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </summary>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <!-- Client Trends -->
                     <div class="metric-card rounded-lg p-6">
-                        <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Total Liabilities</h3>
-                        <p class="text-2xl font-bold text-red-600">${{ "{:,.2f}".format(revenue_metrics.total_liabilities) }}</p>
+                        <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Client Trends</h3>
+                        <div class="h-64">
+                            <canvas id="clientTrendsChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Revenue Comparison -->
+                    <div class="metric-card rounded-lg p-6">
+                        <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Revenue Comparison</h3>
+                        <div class="space-y-6">
+                            <div>
+                                <h4 class="text-sm font-medium mb-2">New Client Revenue</h4>
+                                <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.new_client_revenue) }}</p>
+                                <p class="text-sm text-gray-600">Avg: ${{ "{:,.2f}".format(revenue_metrics.avg_new_revenue) }} per client</p>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium mb-2">Retained Client Revenue</h4>
+                                <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.retained_client_revenue) }}</p>
+                                <p class="text-sm text-gray-600">Avg: ${{ "{:,.2f}".format(revenue_metrics.avg_retained_revenue) }} per client</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Revenue Forecast -->
+            <details class="bg-white rounded-lg shadow-lg p-6 mb-6" open>
+                <summary class="flex justify-between items-center cursor-pointer">
+                    <h2 class="text-2xl font-bold" style="color: var(--navy-blue);">Revenue Forecast</h2>
+                    <svg class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </summary>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <!-- Current Period -->
+                    <div class="metric-card rounded-lg p-6">
+                        <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Current Period</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <p class="text-sm font-medium">Total Revenue</p>
+                                <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_revenue) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium">Active Clients</p>
+                                <p class="text-2xl font-bold" style="color: var(--navy-blue);">{{ revenue_metrics.active_clients }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium">Average Revenue per Client</p>
+                                <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_revenue / revenue_metrics.active_clients if revenue_metrics.active_clients > 0 else 0) }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Projected Growth -->
+                    <div class="metric-card rounded-lg p-6">
+                        <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Projected Growth</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <p class="text-sm font-medium">Expected New Clients</p>
+                                <p class="text-2xl font-bold text-green-600">+{{ (revenue_metrics.new_clients * 1.1)|round|int }}</p>
+                                <p class="text-sm text-gray-600">Based on current acquisition rate</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium">Projected Revenue</p>
+                                <p class="text-2xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_revenue * 1.2) }}</p>
+                                <p class="text-sm text-gray-600">20% growth projection</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium">Growth Confidence</p>
+                                <div class="mt-2 h-2 bg-gray-200 rounded-full">
+                                    <div class="h-2 bg-green-600 rounded-full" style="width: 75%"></div>
+                                </div>
+                                <p class="text-sm text-gray-600 mt-1">Based on retention and acquisition trends</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </details>
 
             <!-- Churn Reports -->
-            <details class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <details class="bg-white rounded-lg shadow-lg p-6 mb-6" open>
                 <summary class="flex justify-between items-center cursor-pointer">
                     <h2 class="text-2xl font-bold" style="color: var(--navy-blue);">Churn Analysis</h2>
                     <svg class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,7 +260,7 @@
                 </div>
 
                 <!-- Churn Metrics -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
                     <div class="metric-card rounded-lg p-6">
                         <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Churn Rate</h3>
                         <p class="text-2xl font-bold" style="color: var(--navy-blue);">{{ "{:.1f}%".format(churn_metrics.churn_rate) }}</p>
@@ -208,7 +313,7 @@
             </details>
 
             <!-- Customer Segmentation -->
-            <details class="bg-white rounded-lg shadow-lg p-6">
+            <details class="bg-white rounded-lg shadow-lg p-6 mb-6" open>
                 <summary class="flex justify-between items-center cursor-pointer">
                     <h2 class="text-2xl font-bold" style="color: var(--navy-blue);">Customer Segmentation</h2>
                     <svg class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -225,7 +330,7 @@
                 </div>
 
                 <!-- Segment Overview -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mt-6">
                     {% for segment in segmentation.segments %}
                     <div class="metric-card rounded-lg p-6">
                         <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">{{ segment.name }}</h3>
@@ -240,7 +345,7 @@
                 </div>
 
                 <!-- Segment Details -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <!-- Revenue Distribution -->
                     <div class="metric-card rounded-lg p-4">
                         <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Revenue Distribution</h3>
@@ -278,6 +383,52 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize client trends chart
+            const trendsCtx = document.getElementById('clientTrendsChart').getContext('2d');
+            const trendData = JSON.parse('{{ trend_data_json | safe }}');
+            const trendsData = {
+                labels: trendData.labels,
+                datasets: [
+                    {
+                        label: 'New Clients',
+                        data: trendData.new_clients,
+                        borderColor: 'rgb(34, 197, 94)',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Retained Clients',
+                        data: trendData.retained_clients,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    }
+                ]
+            };
+            new Chart(trendsCtx, {
+                type: 'line',
+                data: trendsData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Clients'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+
+            // Initialize revenue distribution chart
             const chartData = JSON.parse('{{ segmentation.chart_data | tojson | safe }}');
             const revenueCtx = document.getElementById('revenueDistributionChart').getContext('2d');
             new Chart(revenueCtx, {

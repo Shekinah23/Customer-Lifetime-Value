@@ -105,7 +105,7 @@
             </div>
 
             <!-- Primary Metrics -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
                 <!-- Current CLV -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Current CLV</h3>
@@ -127,6 +127,93 @@
                         {{ "{:+.1f}%".format(metrics.value_trend) }}
                     </p>
                     <p class="text-sm mt-1 text-gray-600">Projected 12-month trend</p>
+                </div>
+
+                <!-- Health Score -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Client Health</h3>
+                    <p class="text-3xl font-bold {{ metrics.health_color }}">
+                        {{ metrics.health_score }}
+                    </p>
+                    <p class="text-sm mt-1 text-gray-600">{{ metrics.health_status }} - Based on engagement & activity</p>
+                </div>
+            </div>
+
+            <!-- Client Activity -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Client Activity</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Digital Usage -->
+                    <div class="metric-card p-4 rounded">
+                        <h4 class="text-md font-semibold mb-2" style="color: var(--navy-blue);">Digital Usage</h4>
+                        <p class="text-2xl font-bold">{{ metrics.activity.digital_usage.last_30_days }}</p>
+                        <p class="text-sm text-gray-600">Total Interactions</p>
+                        <div class="space-y-2 mt-2">
+                            <div>
+                                <p class="text-sm text-gray-600">Channel Distribution</p>
+                                <div class="flex items-center">
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-blue-600 h-2 rounded-full" style="width: {{ metrics.activity.digital_usage.channels.ATM }}%"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm">ATM: {{ "{:.1f}%".format(metrics.activity.digital_usage.channels.ATM) }}</span>
+                                </div>
+                                <div class="flex items-center mt-1">
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-green-600 h-2 rounded-full" style="width: {{ metrics.activity.digital_usage.channels.Internet }}%"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm">Internet: {{ "{:.1f}%".format(metrics.activity.digital_usage.channels.Internet) }}</span>
+                                </div>
+                                <div class="flex items-center mt-1">
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-yellow-600 h-2 rounded-full" style="width: {{ metrics.activity.digital_usage.channels.SMS }}%"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm">SMS: {{ "{:.1f}%".format(metrics.activity.digital_usage.channels.SMS) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Product Engagement -->
+                    <div class="metric-card p-4 rounded">
+                        <h4 class="text-md font-semibold mb-2" style="color: var(--navy-blue);">Product Engagement</h4>
+                        <p class="text-2xl font-bold">{{ metrics.activity.product_engagement.total_products }}</p>
+                        <p class="text-sm text-gray-600">Active Products</p>
+                        <div class="mt-2 space-y-1">
+                            <div class="flex items-center">
+                                <span class="text-sm {% if metrics.activity.product_engagement.salary_account %}text-green-600{% else %}text-gray-500{% endif %}">
+                                    {% if metrics.activity.product_engagement.salary_account %}✓{% else %}✗{% endif %} Salary Account
+                                </span>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="text-sm {% if metrics.activity.product_engagement.credit_card %}text-green-600{% else %}text-gray-500{% endif %}">
+                                    {% if metrics.activity.product_engagement.credit_card %}✓{% else %}✗{% endif %} Credit Card
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Transaction Activity -->
+                    <div class="metric-card p-4 rounded">
+                        <h4 class="text-md font-semibold mb-2" style="color: var(--navy-blue);">Transaction Activity</h4>
+                        {% if metrics.activity.transaction_activity.has_recent_activity %}
+                            {% if metrics.activity.transaction_activity.days_since_last < 0 %}
+                                <p class="text-2xl font-bold text-red-600">Data Error</p>
+                                <p class="text-sm text-gray-600">Invalid Transaction Date</p>
+                                <p class="text-sm mt-2 text-red-600">
+                                    Future date detected ({{ metrics.activity.transaction_activity.days_since_last }} days)
+                                </p>
+                            {% else %}
+                                <p class="text-2xl font-bold">{{ metrics.activity.transaction_activity.days_since_last }}</p>
+                                <p class="text-sm text-gray-600">Days Since Last Transaction</p>
+                                <p class="text-sm mt-2 {% if metrics.activity.transaction_activity.days_since_last <= 30 %}text-green-600{% else %}text-yellow-600{% endif %}">
+                                    {{ "Active" if metrics.activity.transaction_activity.days_since_last <= 30 else "Low Activity" }}
+                                </p>
+                            {% endif %}
+                        {% else %}
+                            <p class="text-2xl font-bold text-red-600">No Activity</p>
+                            <p class="text-sm text-gray-600">No Recent Transactions</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 
@@ -230,7 +317,7 @@
 
         async function initializeCharts() {
             showLoading();
-            const data = {{ chart_data_json|safe }};
+            const data = JSON.parse('{{ chart_data_json|safe }}');
 
             try {
                 // CLV Trend Chart
@@ -270,8 +357,8 @@
                 });
 
                 // Product Usage Chart
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await createChart('productUsageChart', {
+                await delay(100);
+                const productChart = createChart('productUsageChart', {
                     type: 'bar',
                     data: {
                         labels: data.product_usage.labels,
@@ -297,8 +384,8 @@
                 });
 
                 // Loyalty Chart
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await createChart('loyaltyChart', {
+                await delay(100);
+                const loyaltyChart = createChart('loyaltyChart', {
                     type: 'line',
                     data: {
                         labels: data.loyalty.labels,
@@ -326,29 +413,44 @@
                 });
 
                 // Risk Factors Chart
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await createChart('riskFactorsChart', {
-                    type: 'radar',
+                await delay(100);
+                const riskChart = createChart('riskFactorsChart', {
+                    type: 'bar',
                     data: {
                         labels: data.risk_factors.labels,
                         datasets: [{
                             label: 'Risk Level',
                             data: data.risk_factors.data,
-                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                            borderColor: 'rgb(255, 99, 132)',
-                            pointBackgroundColor: 'rgb(255, 99, 132)',
-                            pointBorderColor: '#fff',
-                            pointHoverBackgroundColor: '#fff',
-                            pointHoverBorderColor: 'rgb(255, 99, 132)'
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.7)',  // Red for Transaction Frequency
+                                'rgba(54, 162, 235, 0.7)',  // Blue for Digital Engagement
+                                'rgba(255, 206, 86, 0.7)'   // Yellow for Product Utilization
+                            ],
+                            borderColor: [
+                                'rgb(255, 99, 132)',
+                                'rgb(54, 162, 235)',
+                                'rgb(255, 206, 86)'
+                            ],
+                            borderWidth: 1
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        indexAxis: 'y',  // Horizontal bars
                         scales: {
-                            r: {
+                            x: {
                                 beginAtZero: true,
-                                max: 100
+                                max: 100,
+                                title: {
+                                    display: true,
+                                    text: 'Risk Level (%)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false  // Hide legend since colors are self-explanatory
                             }
                         }
                     }

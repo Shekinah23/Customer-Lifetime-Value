@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLV ANALYTICS - Data Quality Issues</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --navy-blue: #000080;
+            --gold: #FFD700;
+            --white: #FFFFFF;
+        }
+        .glass-header {
+            background: rgba(0, 0, 128, 0.9);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Header -->
+    <header class="glass-header shadow fixed w-full z-50">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Logo" class="h-12 w-auto mr-3">
+                    <h1 class="text-2xl font-bold" style="color: var(--gold);">CLV Analytics</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="/landing" class="text-white hover:text-[#FFD700]">Home</a>
+                    <button onclick="logout()" class="text-white hover:text-[#FFD700]">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="pt-20 px-4">
+        <div class="max-w-7xl mx-auto">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold" style="color: var(--navy-blue);">Data Quality Issues</h2>
+                    <div class="flex space-x-2">
+                        <select id="statusFilter" class="rounded border-gray-300 shadow-sm">
+                            <option value="">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="resolved">Resolved</option>
+                        </select>
+                        <select id="typeFilter" class="rounded border-gray-300 shadow-sm">
+                            <option value="">All Types</option>
+                            <option value="future_transaction_date">Future Transaction Date</option>
+                            <option value="invalid_date">Invalid Date</option>
+                            <option value="missing_data">Missing Data</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Issues List -->
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue Type</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Detected At</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for issue in issues %}
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <a href="/client/{{ issue.client_id }}" class="text-blue-600 hover:text-blue-800">
+                                        {{ issue.client_id }}
+                                    </a>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">{{ issue.issue_type }}</td>
+                                <td class="px-6 py-4">{{ issue.issue_details }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">{{ issue.detected_at }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                        {% if issue.status == 'pending' %}bg-yellow-100 text-yellow-800
+                                        {% elif issue.status == 'in_progress' %}bg-blue-100 text-blue-800
+                                        {% else %}bg-green-100 text-green-800{% endif %}">
+                                        {{ issue.status }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <button onclick="openResolveModal('{{ issue.id }}')" 
+                                            class="text-indigo-600 hover:text-indigo-900">
+                                        Resolve
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="flex justify-between items-center mt-4">
+                    <div class="text-sm text-gray-700">
+                        Showing <span class="font-medium">{{ (page - 1) * per_page + 1 }}</span> to
+                        <span class="font-medium">{{ min(page * per_page, total_count) }}</span> of
+                        <span class="font-medium">{{ total_count }}</span> results
+                    </div>
+                    <div class="flex space-x-2">
+                        {% if page > 1 %}
+                        <a href="?page={{ page - 1 }}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Previous</a>
+                        {% endif %}
+                        {% if page < total_pages %}
+                        <a href="?page={{ page + 1 }}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Next</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resolution Modal -->
+    <div id="resolveModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Resolve Issue</h3>
+                <div class="mt-2">
+                    <form id="resolveForm" method="POST">
+                        <input type="hidden" id="issueId" name="issue_id">
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2" for="resolution">
+                                Resolution Notes
+                            </label>
+                            <textarea id="resolution" name="resolution_notes"
+                                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    rows="3" required></textarea>
+                        </div>
+                        <div class="flex justify-end space-x-2">
+                            <button type="button" onclick="closeResolveModal()"
+                                    class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">
+                                Cancel
+                            </button>
+                            <button type="submit"
+                                    class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                                Submit
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function logout() {
+            window.location.href = '/logout';
+        }
+
+        function openResolveModal(issueId) {
+            document.getElementById('issueId').value = issueId;
+            document.getElementById('resolveModal').classList.remove('hidden');
+        }
+
+        function closeResolveModal() {
+            document.getElementById('resolveModal').classList.add('hidden');
+            document.getElementById('resolveForm').reset();
+        }
+
+        // Filter handling
+        document.getElementById('statusFilter').addEventListener('change', function() {
+            applyFilters();
+        });
+
+        document.getElementById('typeFilter').addEventListener('change', function() {
+            applyFilters();
+        });
+
+        function applyFilters() {
+            const status = document.getElementById('statusFilter').value;
+            const type = document.getElementById('typeFilter').value;
+            let url = window.location.pathname + '?';
+            
+            if (status) url += 'status=' + status + '&';
+            if (type) url += 'type=' + type + '&';
+            
+            window.location.href = url.slice(0, -1); // Remove trailing & or ?
+        }
+    </script>
+</body>
+</html>

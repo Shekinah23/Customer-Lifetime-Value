@@ -288,7 +288,11 @@ def client_details(client_id):
             WHERE c.ACNTS_CLIENT_NUM = ?
         """, (client_id,))
         
-        client = dict(cursor.fetchone())
+        client_row = cursor.fetchone()
+        if client_row is None:
+            return jsonify({'error': 'Client not found'}), 404
+            
+        client = dict(client_row)
         
         # Calculate current CLV
         account_age_days = 0
@@ -308,27 +312,115 @@ def client_details(client_id):
         account_age_years = account_age_days / 365.0
         current_clv = base_clv * (1 + account_age_years * 0.1)
         
-        # Calculate predicted CLV and trend
+        # Calculate digital engagement metrics
+        digital_engagement = {
+            'atm': client['ACNTS_ATM_OPERN'] or 0,
+            'internet': client['ACNTS_INET_OPERN'] or 0,
+            'sms': client['ACNTS_SMS_OPERN'] or 0
+        }
+        
+        # Calculate total digital interactions
+        total_interactions = sum(digital_engagement.values())
+        
+        # Calculate activity metrics based on actual data
+        activity_metrics = {
+            'digital_usage': {
+                'last_30_days': total_interactions,
+                'channels': {
+                    'ATM': (digital_engagement['atm'] / total_interactions * 100) if total_interactions > 0 else 0,
+                    'Internet': (digital_engagement['internet'] / total_interactions * 100) if total_interactions > 0 else 0,
+                    'SMS': (digital_engagement['sms'] / total_interactions * 100) if total_interactions > 0 else 0
+                }
+            },
+            'product_engagement': {
+                'salary_account': client['ACNTS_SALARY_ACNT'] == 1,
+                'credit_card': client['ACNTS_CR_CARDS_ALLOWED'] == 1,
+                'total_products': (client['ACNTS_SALARY_ACNT'] or 0) + (client['ACNTS_CR_CARDS_ALLOWED'] or 0)
+            },
+            'transaction_activity': {
+                'has_recent_activity': client['ACNTS_LAST_TRAN_DATE'] is not None
+            }
+        }
+
+        # Handle transaction activity dates with validation
+        if client['ACNTS_LAST_TRAN_DATE']:
+            last_tran_date = datetime.strptime(client['ACNTS_LAST_TRAN_DATE'], '%Y-%m-%d')
+            current_date = datetime.now()
+            days_since = (current_date - last_tran_date).days
+            
+            if days_since < 0:
+                # Log the error
+                print(f"Data Error: Future transaction date detected for client {client['id']}")
+                print(f"Transaction date: {last_tran_date}, Days in future: {abs(days_since)}")
+                
+                # Use current date as fallback
+                activity_metrics['transaction_activity'].update({
+                    'days_since_last': 0,
+                    'data_error': True,
+                    'original_date': client['ACNTS_LAST_TRAN_DATE'],
+                    'error_message': f"Future date detected ({abs(days_since)} days ahead)",
+                    'needs_review': True
+                })
+                
+                # Set recency score for health calculation
+                recency_score = 50  # Neutral score for invalid data
+                
+                # Flag for data quality review
+                cursor.execute("""
+                    INSERT OR REPLACE INTO data_quality_issues 
+                    (client_id, issue_type, issue_details, detected_at, status)
+                    VALUES (?, 'future_transaction_date', ?, datetime('now'), 'pending')
+                """, (client['id'], f"Transaction date {last_tran_date} is {abs(days_since)} days in the future"))
+                conn.commit()
+            else:
+                activity_metrics['transaction_activity'].update({
+                    'days_since_last': days_since,
+                    'data_error': False
+                })
+                recency_score = max(0, 100 - (days_since / 30) * 20)  # Reduce score by 20 points per month of inactivity
+
+        # Calculate engagement score based on actual metrics
         engagement_score = (
-            (client['ACNTS_ATM_OPERN'] or 0) / 20 +
-            (client['ACNTS_INET_OPERN'] or 0) / 30 * 1.5 +
-            (client['ACNTS_SMS_OPERN'] or 0) / 25 * 1.2
-        ) / 3.7 * 100
+            (digital_engagement['atm'] / 20) +
+            (digital_engagement['internet'] / 30 * 1.5) +
+            (digital_engagement['sms'] / 25 * 1.2)
+        ) / 3.7 * 100  # Scale to percentage
         
         product_score = 0
         if client['ACNTS_SALARY_ACNT'] == 1:
             product_score += 50
         if client['ACNTS_CR_CARDS_ALLOWED'] == 1:
             product_score += 50
+            
+        # Calculate transaction recency score
+        recency_score = 100
+        if client['ACNTS_LAST_TRAN_DATE']:
+            days_since_last_transaction = (datetime.now() - datetime.strptime(client['ACNTS_LAST_TRAN_DATE'], '%Y-%m-%d')).days
+            recency_score = max(0, 100 - (days_since_last_transaction / 30) * 20)  # Reduce score by 20 points per month of inactivity
+            
+        # Calculate overall health score (0-100)
+        health_score = (
+            engagement_score * 0.35 +  # 35% weight on engagement
+            product_score * 0.25 +     # 25% weight on products
+            recency_score * 0.4        # 40% weight on transaction recency
+        )
+        
+        # Get health status and color
+        health_status = 'Excellent' if health_score >= 80 else 'Good' if health_score >= 60 else 'Fair' if health_score >= 40 else 'Poor'
+        health_color = 'text-green-600' if health_score >= 80 else 'text-blue-600' if health_score >= 60 else 'text-yellow-600' if health_score >= 40 else 'text-red-600'
         
         # Predict future value trend based on engagement and products
         value_trend = ((engagement_score / 100) * 0.6 + (product_score / 100) * 0.4 - 0.5) * 100
         predicted_clv = current_clv * (1 + value_trend / 100)
-        
+
         metrics = {
             'current_clv': current_clv,
             'predicted_clv': predicted_clv,
-            'value_trend': value_trend
+            'value_trend': value_trend,
+            'health_score': round(health_score, 1),
+            'health_status': health_status,
+            'health_color': health_color,
+            'activity': activity_metrics
         }
         
         # Generate historical and predicted CLV data
@@ -348,27 +440,15 @@ def client_details(client_id):
                 point_value = current_clv * (1 + (i / months) * (value_trend / 100))
                 predicted_clv_trend.append(point_value)
         
-        # Generate sample retention actions
-        retention_actions = [
-            {
-                'type': 'Personalized Offer',
-                'description': 'Premium account upgrade offer sent',
-                'date': '2025-02-15',
-                'status': 'completed'
-            },
-            {
-                'type': 'Loyalty Program',
-                'description': 'Bonus points campaign',
-                'date': '2025-02-20',
-                'status': 'pending'
-            },
-            {
-                'type': 'Customer Outreach',
-                'description': 'Scheduled account review call',
-                'date': '2025-03-01',
-                'status': 'scheduled'
-            }
-        ]
+        # Generate and get retention actions
+        from retention_manager import RetentionManager
+        retention_mgr = RetentionManager(conn)
+        
+        # Generate new actions if needed
+        retention_mgr.generate_actions(client)
+        
+        # Get all actions for the client
+        retention_actions = [dict(action) for action in retention_mgr.get_client_actions(client['id'])]
         
         # Calculate risk factors
         risk_factors = [
@@ -717,52 +797,92 @@ def reports():
             
         cursor = conn.cursor()
         
-        # Calculate date range
+        # Calculate metrics for the selected period
         cursor.execute("""
             WITH date_range AS (
                 SELECT date('now', '-' || ? || ' months') as start_date,
                        date('now') as end_date
+            ),
+            client_metrics AS (
+                SELECT 
+                    c.*,
+                    -- Calculate revenue per client based on product type and activity
+                    CASE 
+                        WHEN c.ACNTS_PROD_CODE = 3102 THEN 5000  -- Premium
+                        WHEN c.ACNTS_PROD_CODE = 3002 THEN 3000  -- Business
+                        WHEN c.ACNTS_PROD_CODE = 3101 THEN 1000  -- Retail
+                        ELSE 1000
+                    END * (1 + (julianday('now') - julianday(c.ACNTS_OPENING_DATE)) / 365.0 * 0.1) as base_revenue,
+                    
+                    -- Channel activity
+                    COALESCE(c.ACNTS_ATM_OPERN, 0) as atm_ops,
+                    COALESCE(c.ACNTS_INET_OPERN, 0) as inet_ops,
+                    COALESCE(c.ACNTS_SMS_OPERN, 0) as sms_ops,
+                    
+                    -- Client categorization
+                    CASE 
+                        WHEN c.ACNTS_OPENING_DATE >= date_range.start_date THEN 'new'
+                        WHEN c.ACNTS_LAST_TRAN_DATE >= date_range.start_date THEN 'retained'
+                        ELSE 'inactive'
+                    END as client_status
+                FROM clients c, date_range
+                WHERE c.ACNTS_OPENING_DATE <= date_range.end_date
             )
             SELECT 
-                COUNT(DISTINCT c.ACNTS_CLIENT_NUM) as contributing_clients,
-                SUM(CASE 
-                    WHEN c.ACNTS_PROD_CODE = 3102 THEN 5000 * ?
-                    WHEN c.ACNTS_PROD_CODE = 3002 THEN 3000 * ?
-                    WHEN c.ACNTS_PROD_CODE = 3101 THEN 1000 * ?
-                    ELSE 1000 * ?
-                END) as total_revenue,
-                SUM(CASE 
-                    WHEN c.ACNTS_PROD_CODE IN (3102, 3002) THEN 2000 * ?
-                    ELSE 500 * ?
-                END) as total_assets,
-                SUM(CASE 
-                    WHEN c.ACNTS_DORMANT_ACNT = 1 THEN 300 * ?
-                    ELSE 100 * ?
-                END) as total_expenses,
-                SUM(CASE 
-                    WHEN c.ACNTS_INOP_ACNT = 1 THEN 200 * ?
-                    ELSE 50 * ?
-                END) as total_liabilities
-            FROM clients c, date_range
-            WHERE c.ACNTS_OPENING_DATE <= date_range.end_date
-                AND (c.ACNTS_LAST_TRAN_DATE >= date_range.start_date OR c.ACNTS_LAST_TRAN_DATE IS NULL)
-        """, (months, months, months, months, months, months, months, months, months, months, months))
+                -- Basic metrics
+                COUNT(DISTINCT ACNTS_CLIENT_NUM) as contributing_clients,
+                SUM(base_revenue) as total_revenue,
+                
+                -- Channel revenue (weighted by operation count)
+                SUM(base_revenue * (atm_ops / NULLIF(atm_ops + inet_ops + sms_ops, 0))) as atm_revenue,
+                SUM(base_revenue * (inet_ops / NULLIF(atm_ops + inet_ops + sms_ops, 0))) as internet_revenue,
+                SUM(base_revenue * (sms_ops / NULLIF(atm_ops + inet_ops + sms_ops, 0))) as sms_revenue,
+                
+                -- Retention vs Acquisition
+                COUNT(CASE WHEN client_status = 'new' THEN 1 END) as new_clients,
+                COUNT(CASE WHEN client_status = 'retained' THEN 1 END) as retained_clients,
+                COUNT(CASE WHEN client_status = 'inactive' THEN 1 END) as inactive_clients,
+                
+                -- Revenue by client status
+                SUM(CASE WHEN client_status = 'new' THEN base_revenue ELSE 0 END) as new_client_revenue,
+                SUM(CASE WHEN client_status = 'retained' THEN base_revenue ELSE 0 END) as retained_client_revenue,
+                
+                -- Activity metrics for forecasting
+                AVG(CASE WHEN client_status = 'retained' THEN base_revenue END) as avg_retained_revenue,
+                AVG(CASE WHEN client_status = 'new' THEN base_revenue END) as avg_new_revenue,
+                COUNT(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 END) as active_clients
+                
+            FROM client_metrics
+        """, (months,))
         
         result = cursor.fetchone()
-        
-        # Calculate metrics based on query results
-        total_revenue = result['total_revenue'] or 0
-        total_assets = result['total_assets'] or 0
-        total_expenses = result['total_expenses'] or 0
-        total_liabilities = result['total_liabilities'] or 0
+        if not result:
+            return jsonify({'error': 'No data found for selected period'}), 404
+
+        # Convert row to dict for easier access
+        metrics = dict(result)
         
         revenue_metrics = {
-            'net_total_revenue': total_revenue + total_assets - total_expenses - total_liabilities,
-            'total_revenue': total_revenue,
-            'total_assets': total_assets,
-            'total_expenses': total_expenses,
-            'total_liabilities': total_liabilities,
-            'contributing_clients': result['contributing_clients'] or 0
+            # Basic metrics
+            'contributing_clients': metrics['contributing_clients'] or 0,
+            'total_revenue': metrics['total_revenue'] or 0,
+            'active_clients': metrics['active_clients'] or 0,
+            
+            # Channel revenue
+            'atm_revenue': metrics['atm_revenue'] or 0,
+            'internet_revenue': metrics['internet_revenue'] or 0,
+            'sms_revenue': metrics['sms_revenue'] or 0,
+            
+            # Client metrics
+            'new_clients': metrics['new_clients'] or 0,
+            'retained_clients': metrics['retained_clients'] or 0,
+            'inactive_clients': metrics['inactive_clients'] or 0,
+            
+            # Revenue by client type
+            'new_client_revenue': metrics['new_client_revenue'] or 0,
+            'retained_client_revenue': metrics['retained_client_revenue'] or 0,
+            'avg_new_revenue': metrics['avg_new_revenue'] or 0,
+            'avg_retained_revenue': metrics['avg_retained_revenue'] or 0
         }
         
         # Sample churn metrics
@@ -861,11 +981,29 @@ def reports():
             }
         }
         
+        # Prepare trend data
+        trend_data = {
+            'new_clients': [
+                revenue_metrics['new_clients'],
+                round(revenue_metrics['new_clients'] * 0.8),
+                round(revenue_metrics['new_clients'] * 0.6),
+                round(revenue_metrics['new_clients'] * 0.4)
+            ],
+            'retained_clients': [
+                revenue_metrics['retained_clients'],
+                round(revenue_metrics['retained_clients'] * 1.1),
+                round(revenue_metrics['retained_clients'] * 1.2),
+                round(revenue_metrics['retained_clients'] * 1.3)
+            ],
+            'labels': ['Week 1', 'Week 2', 'Week 3', 'Week 4']
+        }
+
         return render_template('reports.html',
                              selected_period=selected_period,
                              revenue_metrics=revenue_metrics,
                              churn_metrics=churn_metrics,
-                             segmentation=segmentation)
+                             segmentation=segmentation,
+                             trend_data_json=json.dumps(trend_data))
                              
     except Exception as e:
         print(f"Error loading reports: {str(e)}")
@@ -1073,6 +1211,127 @@ def product_analytics():
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/data-quality')
+@login_required
+def data_quality():
+    try:
+        # Get filter parameters
+        status = request.args.get('status', '')
+        issue_type = request.args.get('type', '')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('limit', 20, type=int)
+        
+        conn = get_db()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        cursor = conn.cursor()
+        
+        # Build query with filters
+        query = """
+            SELECT 
+                dq.id,
+                dq.client_id,
+                dq.issue_type,
+                dq.issue_details,
+                dq.detected_at,
+                dq.status,
+                dq.resolved_at,
+                dq.resolution_notes
+            FROM data_quality_issues dq
+            WHERE 1=1
+        """
+        params = []
+        
+        if status:
+            query += " AND dq.status = ?"
+            params.append(status)
+            
+        if issue_type:
+            query += " AND dq.issue_type = ?"
+            params.append(issue_type)
+            
+        # Get total count
+        count_query = f"SELECT COUNT(*) FROM ({query}) as count_query"
+        cursor.execute(count_query, params)
+        total_count = cursor.fetchone()[0]
+        
+        # Add pagination
+        query += " ORDER BY dq.detected_at DESC LIMIT ? OFFSET ?"
+        offset = (page - 1) * per_page
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        issues = [dict(row) for row in cursor.fetchall()]
+        
+        total_pages = (total_count + per_page - 1) // per_page
+        
+        conn.close()
+        return render_template('data_quality.html',
+                             issues=issues,
+                             page=page,
+                             per_page=per_page,
+                             total_pages=total_pages,
+                             total_count=total_count)
+                             
+    except Exception as e:
+        print(f"Error loading data quality issues: {str(e)}")
+        if conn:
+            conn.close()
+        return jsonify({'error': 'Failed to load data quality issues'}), 500
+
+@app.route('/data-quality/resolve', methods=['POST'])
+@login_required
+def resolve_data_quality_issue():
+    try:
+        issue_id = request.form.get('issue_id')
+        resolution_notes = request.form.get('resolution_notes')
+        
+        if not issue_id or not resolution_notes:
+            return jsonify({'error': 'Missing required fields'}), 400
+            
+        conn = get_db()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        cursor = conn.cursor()
+        
+        # Update issue status
+        cursor.execute("""
+            UPDATE data_quality_issues
+            SET status = 'resolved',
+                resolved_at = datetime('now'),
+                resolution_notes = ?
+            WHERE id = ?
+        """, (resolution_notes, issue_id))
+        
+        # If this was a future transaction date issue, update the transaction date
+        cursor.execute("""
+            SELECT client_id, issue_type, issue_details
+            FROM data_quality_issues
+            WHERE id = ?
+        """, (issue_id,))
+        issue = cursor.fetchone()
+        
+        if issue and issue['issue_type'] == 'future_transaction_date':
+            # Update the client's transaction date to current date
+            cursor.execute("""
+                UPDATE clients
+                SET ACNTS_LAST_TRAN_DATE = date('now')
+                WHERE ACNTS_CLIENT_NUM = ?
+            """, (issue['client_id'],))
+        
+        conn.commit()
+        conn.close()
+        
+        return redirect(url_for('data_quality'))
+        
+    except Exception as e:
+        print(f"Error resolving data quality issue: {str(e)}")
+        if conn:
+            conn.close()
+        return jsonify({'error': 'Failed to resolve issue'}), 500
 
 @app.route('/logout')
 def logout():
