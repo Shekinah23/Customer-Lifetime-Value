@@ -3,3 +3,15 @@ sqlalchemy
 python-dotenv
 flask
 flask-cors
+flask-caching
+flask-session
+scikit-learn
+numpy
+scipy
+joblib
+num2words
+pdfkit
+xgboost
+matplotlib
+seaborn
+openpyxl

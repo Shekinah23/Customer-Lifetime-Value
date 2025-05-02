@@ -3,14 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CLV ANALYTICS - Client Details</title>
+    <title>XPLUG-ANALYTICA - Client Details</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --navy-blue: #000080;
+            --navy-blue: #41416f;
             --gold: #FFD700;
             --white: #FFFFFF;
+        }
+        .glass-header {
+            background: rgba(99, 99, 185, 0.9);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .nav-link {
+            color: var(--white);
+            transition: all 0.3s ease;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+        }
+        .nav-link:hover {
+            color: var(--gold);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .nav-link.active {
+            color: var(--gold);
+            background: rgba(255, 255, 255, 0.15);
         }
         .loading {
             position: fixed;
@@ -33,7 +52,9 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to { 
+                transform: rotate(360deg);
+            }
         }
         .chart-container {
             opacity: 0;
@@ -41,11 +62,6 @@
         }
         .chart-container.loaded {
             opacity: 1;
-        }
-        .glass-header {
-            background: rgba(0, 0, 128, 0.9);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
         }
         .metric-card {
             background: var(--white);
@@ -63,24 +79,28 @@
         }
     </style>
 </head>
-<body class="bg-white">
-    <!-- Header -->
+<body class="bg-gray-50">
+    <!-- Header with Navigation -->
     <header class="glass-header shadow fixed w-full z-50">
         <div class="container mx-auto px-4">
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center">
-                    <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Logo" class="h-12 w-auto mr-3" style="min-width: 48px;">
-                    <h1 class="text-2xl font-bold" style="color: var(--gold);">CLV Analytics</h1>
+                    <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Logo" class="w-auto mr-3 p-2 bg-white rounded" style="height: 38px; min-width: 38px;">
+                    <h1 class="text-2xl font-bold text-white">XPLUG-ANALYTICA</h1>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <a href="/clients" class="text-white hover:text-[#FFD700]">Back to Clients</a>
-                    <a href="/landing" class="text-white hover:text-[#FFD700]">Home</a>
-                    <button onclick="logout()" class="text-white hover:text-[#FFD700]">
+                <nav class="flex items-center space-x-4">
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    <a href="/clients" class="nav-link active">Clients</a>
+                    <a href="/products" class="nav-link">Products</a>
+                    <a href="/loans" class="nav-link">Loans</a>
+                    <a href="/reports" class="nav-link">Reports</a>
+                    <a href="/data-quality" class="nav-link">Data Quality</a>
+                    <button onclick="logout()" class="nav-link">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
                         </svg>
                     </button>
-                </div>
+                </nav>
             </div>
         </div>
     </header>
@@ -101,6 +121,42 @@
                         {% else %}bg-red-100 text-red-800{% endif %}">
                         {{ client.status }}
                     </span>
+                </div>
+                <!-- Products Overview -->
+                <div class="mt-4 pt-4 border-t border-gray-200">
+                    <h3 class="text-lg font-semibold mb-3" style="color: var(--navy-blue);">Products ({{ metrics.activity.product_engagement.total_products }})</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div class="p-3 rounded-lg border {% if client.ACNTS_ATM_OPERN == 1 %}border-green-500 bg-green-50{% else %}border-gray-200{% endif %}">
+                            <div class="flex items-center">
+                                <input type="checkbox" class="form-checkbox text-green-500" disabled {% if client.ACNTS_ATM_OPERN == 1 %}checked{% endif %}>
+                                <span class="ml-2 {% if client.ACNTS_ATM_OPERN == 1 %}text-green-700 font-medium{% else %}text-gray-500{% endif %}">ATM Operations</span>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-lg border {% if client.ACNTS_INET_OPERN == 1 %}border-green-500 bg-green-50{% else %}border-gray-200{% endif %}">
+                            <div class="flex items-center">
+                                <input type="checkbox" class="form-checkbox text-green-500" disabled {% if client.ACNTS_INET_OPERN == 1 %}checked{% endif %}>
+                                <span class="ml-2 {% if client.ACNTS_INET_OPERN == 1 %}text-green-700 font-medium{% else %}text-gray-500{% endif %}">Internet Banking</span>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-lg border {% if client.ACNTS_SMS_OPERN == 1 %}border-green-500 bg-green-50{% else %}border-gray-200{% endif %}">
+                            <div class="flex items-center">
+                                <input type="checkbox" class="form-checkbox text-green-500" disabled {% if client.ACNTS_SMS_OPERN == 1 %}checked{% endif %}>
+                                <span class="ml-2 {% if client.ACNTS_SMS_OPERN == 1 %}text-green-700 font-medium{% else %}text-gray-500{% endif %}">SMS Banking</span>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-lg border {% if client.ACNTS_SALARY_ACNT == 1 %}border-green-500 bg-green-50{% else %}border-gray-200{% endif %}">
+                            <div class="flex items-center">
+                                <input type="checkbox" class="form-checkbox text-green-500" disabled {% if client.ACNTS_SALARY_ACNT == 1 %}checked{% endif %}>
+                                <span class="ml-2 {% if client.ACNTS_SALARY_ACNT == 1 %}text-green-700 font-medium{% else %}text-gray-500{% endif %}">Salary Account</span>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-lg border {% if client.ACNTS_CR_CARDS_ALLOWED == 1 %}border-green-500 bg-green-50{% else %}border-gray-200{% endif %}">
+                            <div class="flex items-center">
+                                <input type="checkbox" class="form-checkbox text-green-500" disabled {% if client.ACNTS_CR_CARDS_ALLOWED == 1 %}checked{% endif %}>
+                                <span class="ml-2 {% if client.ACNTS_CR_CARDS_ALLOWED == 1 %}text-green-700 font-medium{% else %}text-gray-500{% endif %}">Credit Card</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -143,6 +199,25 @@
             <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
                 <h3 class="text-lg font-semibold mb-4" style="color: var(--navy-blue);">Client Activity</h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Channel Activities -->
+                    <div class="metric-card p-4 rounded">
+                        <h4 class="text-md font-semibold mb-2" style="color: var(--navy-blue);">Channel Activities</h4>
+                        <div class="space-y-4">
+                            {% for channel_name, channel in metrics.activity.digital_usage.channels_data.items() %}
+                            <a href="/client/{{ client.id }}/channel/{{ channel_name }}" 
+                               class="block border rounded-lg p-3 {% if channel.active %}bg-green-50 border-green-500{% else %}bg-gray-50 border-gray-200{% endif %} hover:border-[#FFD700] transition-colors duration-200">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-medium {{ 'text-green-700' if channel.active else 'text-gray-500' }}">
+                                        {{ channel_name }}
+                                    </span>
+                                    <span class="text-sm {{ 'text-green-600' if channel.active else 'text-gray-500' }}">
+                                        {{ channel.activities|length }} activities
+                                    </span>
+                                </div>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </div>
                     <!-- Digital Usage -->
                     <div class="metric-card p-4 rounded">
                         <h4 class="text-md font-semibold mb-2" style="color: var(--navy-blue);">Digital Usage</h4>
@@ -179,16 +254,21 @@
                         <p class="text-2xl font-bold">{{ metrics.activity.product_engagement.total_products }}</p>
                         <p class="text-sm text-gray-600">Active Products</p>
                         <div class="mt-2 space-y-1">
+                            {% set active_products = [
+                                {'name': 'ATM Operations', 'active': client.ACNTS_ATM_OPERN == 1},
+                                {'name': 'Internet Banking', 'active': client.ACNTS_INET_OPERN == 1},
+                                {'name': 'SMS Banking', 'active': client.ACNTS_SMS_OPERN == 1},
+                                {'name': 'Salary Account', 'active': client.ACNTS_SALARY_ACNT == 1},
+                                {'name': 'Credit Card', 'active': client.ACNTS_CR_CARDS_ALLOWED == 1}
+                            ] %}
+                            {% for product in active_products %}
                             <div class="flex items-center">
-                                <span class="text-sm {% if metrics.activity.product_engagement.salary_account %}text-green-600{% else %}text-gray-500{% endif %}">
-                                    {% if metrics.activity.product_engagement.salary_account %}✓{% else %}✗{% endif %} Salary Account
-                                </span>
+                                <label class="flex items-center">
+                                    <input type="checkbox" class="form-checkbox text-green-500" disabled {% if product.active %}checked{% endif %}>
+                                    <span class="ml-2 text-sm {% if product.active %}text-green-600{% else %}text-gray-500{% endif %}">{{ product.name }}</span>
+                                </label>
                             </div>
-                            <div class="flex items-center">
-                                <span class="text-sm {% if metrics.activity.product_engagement.credit_card %}text-green-600{% else %}text-gray-500{% endif %}">
-                                    {% if metrics.activity.product_engagement.credit_card %}✓{% else %}✗{% endif %} Credit Card
-                                </span>
-                            </div>
+                            {% endfor %}
                         </div>
                     </div>
                     
@@ -290,6 +370,26 @@
     <script>
         function logout() {
             window.location.href = '/logout';
+        }
+
+        function toggleChannelDetails(channelId) {
+            const details = document.getElementById(`${channelId}-details`);
+            const icon = document.getElementById(`${channelId}-icon`);
+            
+            // Close all other dropdowns
+            document.querySelectorAll('[id$="-details"]').forEach(el => {
+                if (el.id !== `${channelId}-details` && !el.classList.contains('hidden')) {
+                    el.classList.add('hidden');
+                    const otherIcon = document.getElementById(el.id.replace('-details', '-icon'));
+                    if (otherIcon) {
+                        otherIcon.style.transform = 'rotate(0deg)';
+                    }
+                }
+            });
+            
+            // Toggle current dropdown
+            details.classList.toggle('hidden');
+            icon.style.transform = details.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
         }
 
         function showLoading() {

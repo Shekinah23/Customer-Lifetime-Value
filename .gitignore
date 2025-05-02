@@ -1,5 +1,5 @@
 # Large files (>100MB)
-banking_data.db
+data_processor/banking_data.db
 data_processor/datasets/indclients.csv
 data_processor/datasets/corpclients.csv
 

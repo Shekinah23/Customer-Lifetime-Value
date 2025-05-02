@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CLV ANALYTICS - Dashboard</title>
+    <title>XPLUG-ANALYTICA - Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -45,17 +45,22 @@
         <div class="container mx-auto px-4">
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center">
-                    <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Logo" class="h-12 w-auto mr-3" style="min-width: 48px;">
-                    <h1 class="text-2xl font-bold" style="color: var(--gold);">CLV Analytics</h1>
+                    <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Logo" class="w-auto mr-3 p-2 bg-white rounded" style="height: 38px; min-width: 38px;">
+                    <h1 class="text-2xl font-bold text-white">XPLUG-ANALYTICA</h1>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <a href="/landing" class="text-white hover:text-[#FFD700]">Home</a>
-                    <button onclick="logout()" class="text-white hover:text-[#FFD700]">
+                <nav class="flex items-center space-x-4">
+                    <a href="/dashboard" class="nav-link active">Dashboard</a>
+                    <a href="/clients" class="nav-link">Clients</a>
+                    <a href="/products" class="nav-link">Products</a>
+                    <a href="/loans" class="nav-link">Loans</a>
+                    <a href="/reports" class="nav-link">Reports</a>
+                    <a href="/data-quality" class="nav-link">Data Quality</a>
+                    <button onclick="logout()" class="nav-link">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
                         </svg>
                     </button>
-                </div>
+                </nav>
             </div>
         </div>
     </header>
@@ -63,12 +68,116 @@
     <!-- Main Content -->
     <div class="pt-20 px-4">
         <div class="max-w-7xl mx-auto">
+            <!-- Overview Statistics -->
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+                <!-- Account Statistics -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Accounts</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Active</span>
+                            <span class="font-bold text-green-600">{{ revenue_metrics.active_clients }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Inactive</span>
+                            <span class="font-bold text-yellow-600">{{ revenue_metrics.inactive_clients }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Closed</span>
+                            <span class="font-bold text-red-600">{{ revenue_metrics.closed_clients }}</span>
+                        </div>
+                        <div class="pt-2 border-t border-gray-200">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-medium">Total</span>
+                                <span class="font-bold" style="color: var(--navy-blue);">{{ revenue_metrics.contributing_clients }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Revenue -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Total Revenue</h3>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_revenue) }}</p>
+                    <div class="mt-2 space-y-1">
+                        <span class="text-sm text-gray-600">From {{ revenue_metrics.contributing_clients }} clients</span>
+                        <!-- Currency Breakdown -->
+                        <div class="pt-2 border-t border-gray-200 mt-2">
+                            <h4 class="text-sm font-medium text-gray-700">Currency Breakdown</h4>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>USD</span>
+                                <span class="font-medium">${{ "{:,.2f}".format(revenue_metrics.usd_revenue or 0) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>ZWL</span>
+                                <span class="font-medium">${{ "{:,.2f}".format(revenue_metrics.zwl_revenue or 0) }}</span>
+                            </div>
+                        </div>
+                        <!-- Contributors Breakdown -->
+                        <div class="pt-2 border-t border-gray-200 mt-2">
+                            <h4 class="text-sm font-medium text-gray-700">Revenue Sources</h4>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>Loans</span>
+                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.loan_contribution or 100.0) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>ATM</span>
+                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.atm_percentage or 33.33) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>Internet</span>
+                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.internet_percentage or 50.0) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span>SMS</span>
+                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.sms_percentage or 16.67) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Branches -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Branches</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Total Branches</span>
+                            <span class="font-bold" style="color: var(--navy-blue);">{{ revenue_metrics.total_branches }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Active</span>
+                            <span class="font-bold text-green-600">{{ revenue_metrics.active_branches }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Channels -->
+                <div class="metric-card rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Channels</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">ATM</span>
+                            <span class="font-bold text-blue-600">${{ "{:,.2f}".format(revenue_metrics.atm_revenue) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Internet</span>
+                            <span class="font-bold text-green-600">${{ "{:,.2f}".format(revenue_metrics.internet_revenue) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">SMS</span>
+                            <span class="font-bold text-yellow-600">${{ "{:,.2f}".format(revenue_metrics.sms_revenue) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
             <!-- Primary Metrics Row -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <!-- CLV Metrics -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Average CLV</h3>
-                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(metrics.avg_clv) }}</p>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(metrics.avg_clv if not metrics.avg_clv is mapping else metrics.avg_clv.value) }}</p>
                     <p class="text-sm mt-1 text-gray-600">Per customer value</p>
                     <div class="mt-2 flex items-center">
                         <span class="{{ 'trend-up' if metrics.clv_trend == 'Upward' else 'trend-down' }} text-sm font-medium">
@@ -251,7 +360,8 @@
         };
 
         document.addEventListener('DOMContentLoaded', function() {
-            const data = {{ chart_data_json|safe }};
+            // Parse JSON data safely for charts
+            const data = JSON.parse('{{ chart_data_json|safe }}');
             
             if (data.cac_breakdown) {
                 new Chart(document.getElementById('cacBreakdownChart').getContext('2d'), {

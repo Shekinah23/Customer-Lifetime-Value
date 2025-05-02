@@ -1,0 +1,809 @@
+C USTOMER LIFETIME VALUE (CLV) ANALYTICS PLATFORM
+==============================================
+
+Table of Contents:
+1. Project Overview
+2. System Architecture
+3. Data Structure
+4. Key Features
+5. Metrics & Calculations
+6. Technical Implementation
+7. User Guide
+
+1. PROJECT OVERVIEW
+------------------
+The Customer Lifetime Value Analytics Platform is a comprehensive banking analytics solution that helps financial institutions understand, track, and optimize customer value throughout their relationship lifecycle. The system processes loan data, customer transactions, and account information to provide actionable insights and predictive analytics.
+
+2. SYSTEM ARCHITECTURE
+---------------------
+The platform is built using:
+- Backend: Python Flask framework
+- Database: SQLite
+- Frontend: HTML, Tailwind CSS, JavaScript
+- Data Processing: Pandas, NumPy
+- Analytics: Custom ML models for predictions
+
+Key Components:
+a) Data Processor: Handles data import and transformation
+b) Analytics Engine: Calculates metrics and generates insights
+c) Web Interface: Provides user-friendly access to data and insights
+d) Caching Layer: Optimizes performance using Flask-Caching
+
+3. DATA STRUCTURE
+----------------
+The system processes data from multiple sources and maintains several interconnected databases:
+
+A. Client Database:
+1. clients Table:
+   - ACNTS_CLIENT_NUM: Unique client identifier
+   - ACNTS_AC_NAME1, ACNTS_AC_NAME2: Client names
+   - ACNTS_OPENING_DATE: Account opening date
+   - ACNTS_LAST_TRAN_DATE: Last transaction date
+   - ACNTS_PROD_CODE: Product code
+   - ACNTS_BRN_CODE: Branch code
+   - ACNTS_DORMANT_ACNT: Dormancy flag
+   - ACNTS_INOP_ACNT: Inactive flag
+   - ACNTS_ATM_OPERN: ATM usage flag
+   - ACNTS_INET_OPERN: Internet banking flag
+   - ACNTS_SMS_OPERN: SMS banking flag
+   - ACNTS_SALARY_ACNT: Salary account flag
+   - ACNTS_CR_CARDS_ALLOWED: Credit card eligibility
+
+B. Product Database:
+1. products Table:
+   - PRODUCT_CODE: Unique product identifier
+   - PRODUCT_NAME: Product name
+   - PRODUCT_GROUP_CODE: Product group
+   - PRODUCT_CLASS: Classification
+   - PRODUCT_FOR_DEPOSITS: Deposit product flag
+   - PRODUCT_FOR_LOANS: Loan product flag
+   - PRODUCT_REVOKED_ON: Revocation date
+
+2. charges Table:
+   - CHARGES_PROD_CODE: Product code
+   - CHARGES_CHG_AMT_CHOICE: Charge type
+   - CHARGES_FIXED_AMT: Fixed charge amount
+   - CHARGES_CHG_CURR: Currency
+   - CHARGES_CHGS_PERCENTAGE: Percentage-based charge
+
+C. Transaction Database:
+1. transactions Table:
+   - Transaction ID
+   - Client ID
+   - Transaction type
+   - Amount
+   - Channel
+   - Date/Time
+   - Status
+
+D. Channel Analytics:
+1. channel_usage Table:
+   - Client ID
+   - Channel type
+   - Usage frequency
+   - Last used date
+   - Success rate
+
+E. Loan Database:
+
+A. Data Sources:
+1. M_PROJ_INFO.xlsx:
+   - Contains core loan information
+   - Project details and loan terms
+   - Interest rates and payment schedules
+   - Account numbers and client relationships
+
+2. M_PROJ_FINBAL.xlsx:
+   - Financial balance information
+   - Outstanding balances
+   - Days past due tracking
+   - Payment histories
+
+3. M_REPMT_SCHD.xlsx:
+   - Repayment schedules
+   - Payment tracking
+   - Installment details
+   - Payment status
+
+B. Database Tables:
+
+a) loan_info:
+- proj_id: Project/Loan identifier
+- loan_type: Type of loan
+- original_amount: Initial loan amount
+- interest_rate: Loan interest rate
+- start_date: Loan start date
+- maturity_date: Loan end date
+- monthly_payment: Monthly installment
+- ACC_NUM: Account number
+
+b) loan_balance:
+- proj_id: Project/Loan identifier
+- outstanding_balance: Current loan balance
+- days_past_due: Number of days payment is overdue
+
+c) loan_payments:
+- proj_id: Project/Loan identifier
+- payment_count: Number of payments made
+
+C. Data Relationships:
+1. Primary Keys and Foreign Keys:
+   - proj_id links all tables together
+   - loan_type and origination_date form composite keys
+   - ACC_NUM provides client account linkage
+
+2. Data Flow:
+   - Excel files → Data validation → SQLite tables
+   - Real-time updates for balances and payments
+   - Cached calculations for performance
+   - Automated data quality checks
+
+3. Data Quality Controls:
+   - Validation of date formats
+   - Balance consistency checks
+   - Payment sequence verification
+   - Account number validation
+   - Duplicate detection
+
+4. Data Update Process:
+   - Regular imports from source systems
+   - Automated validation checks
+   - Error logging and resolution
+   - Historical data maintenance
+
+4. KEY FEATURES
+--------------
+1. Loan Management:
+   - Individual loan tracking
+   - Portfolio overview
+   - Payment history
+   - Account status monitoring
+
+2. Analytics Dashboard:
+   - Customer segmentation
+   - Risk assessment
+   - Profitability analysis
+   - Performance metrics
+
+3. Metrics Section:
+   - Interest metrics
+   - Risk metrics
+   - Profitability metrics
+   - Timeline analysis
+
+4. Data Quality:
+   - Issue detection
+   - Data validation
+   - Error resolution
+   - Quality monitoring
+
+5. METRICS & CALCULATIONS
+------------------------
+A. Core Financial Calculations:
+1. Basic Revenue:
+   ```
+   Monthly Revenue = Base Fee + Transaction Fees + Service Charges
+   Annual Revenue = Σ(Monthly Revenue for 12 months)
+   ```
+
+2. Cost Calculations:
+   ```
+   Total Cost = Fixed Costs + Variable Costs
+   Cost per Customer = Total Cost / Number of Active Customers
+   ```
+
+3. Profitability:
+   ```
+   Gross Profit = Total Revenue - Total Cost
+   Profit per Customer = Revenue per Customer - Cost per Customer
+   Profit Margin = (Gross Profit / Total Revenue) * 100
+   ```
+
+B. Customer Value Metrics:
+1. Base CLV Calculation:
+   ```
+   Base CLV = Σ(Annual Revenue * Retention Probability)
+   where:
+   - Annual Revenue = Customer's yearly revenue
+   - Retention Probability = Historical retention rate
+   ```
+
+2. Adjusted CLV:
+   ```
+   Adjusted CLV = Base CLV * (1 + Growth Factor) * (1 - Churn Risk)
+   where:
+   - Growth Factor = Average revenue growth rate
+   - Churn Risk = Predicted probability of churn
+   ```
+
+3. Customer Engagement Score:
+   ```
+   Digital Usage Score = (ATM + Internet + SMS) / Total Available Channels
+   Product Usage Score = Active Products / Available Products
+   Transaction Score = (Frequency * Value) / Benchmark
+   
+   Engagement Score = (0.4 * Digital Usage Score) +
+                     (0.3 * Product Usage Score) +
+                     (0.3 * Transaction Score)
+   ```
+
+C. Risk Calculations:
+1. Default Risk:
+   ```
+   Base Risk Score = Days Past Due Points + Payment History Points
+   where:
+   - 90+ days: 100 points
+   - 60-90 days: 75 points
+   - 30-60 days: 50 points
+   - 1-30 days: 25 points
+   - Current: 0 points
+   
+   Adjusted Risk = Base Risk * Risk Multiplier
+   Risk Multiplier = 1 + (Negative Factors / Total Factors)
+   ```
+
+2. Churn Probability:
+   ```
+   Churn Score = w1*Inactivity + w2*ProductUsage + w3*Engagement
+   where:
+   - w1, w2, w3 are weights (0.4, 0.3, 0.3)
+   - Inactivity = Days since last transaction / 365
+   - ProductUsage = 1 - (Active products / Available products)
+   - Engagement = 1 - Engagement Score
+   ```
+
+D. Product Performance:
+1. Product Profitability:
+   ```
+   Product Revenue = Base Fees + Usage Fees + Interest
+   Product Costs = Direct Costs + Allocated Overhead
+   Product Profit = Product Revenue - Product Costs
+   ROI = (Product Profit / Product Costs) * 100
+   ```
+
+2. Product Health Score:
+   ```
+   Health Score = (0.4 * Usage Rate) +
+                 (0.3 * Customer Satisfaction) +
+                 (0.3 * Profitability Rate)
+   where:
+   - Usage Rate = Active Users / Total Users
+   - Customer Satisfaction = Positive Interactions / Total Interactions
+   - Profitability Rate = Product Profit / Target Profit
+   ```
+
+E. Channel Analytics:
+1. Channel Efficiency:
+   ```
+   Success Rate = Successful Transactions / Total Transactions
+   Cost per Transaction = Channel Operating Cost / Transaction Volume
+   Revenue per Transaction = Transaction Revenue / Transaction Volume
+   Channel ROI = ((Revenue - Cost) / Cost) * 100
+   ```
+
+2. Channel Usage Score:
+   ```
+   Usage Score = (Transaction Volume * Weight1) +
+                (Success Rate * Weight2) +
+                (Customer Preference * Weight3)
+   where weights sum to 1.0
+   ```
+
+F. Loan Analytics:
+1. Interest Calculations:
+   ```
+   Monthly Interest = Outstanding Principal * (Annual Interest Rate / 12)
+   Total Interest = Σ(Monthly Interest for loan term)
+   Effective Interest Rate = ((1 + Nominal Rate/n)^n) - 1
+   where n = number of compounding periods per year
+   ```
+
+2. Payment Calculations:
+   ```
+   Monthly Payment = P * (r * (1 + r)^n) / ((1 + r)^n - 1)
+   where:
+   P = Principal loan amount
+   r = Monthly interest rate (annual rate / 12)
+   n = Total number of payments (years * 12)
+   ```
+
+3. Amortization:
+   ```
+   Interest Payment = Outstanding Balance * Monthly Rate
+   Principal Payment = Monthly Payment - Interest Payment
+   New Balance = Old Balance - Principal Payment
+   ```
+
+4. Early Payment Impact:
+   ```
+   Interest Saved = Remaining Scheduled Interest - Recalculated Interest
+   Prepayment Penalty = Original Balance * Penalty Rate
+   Net Benefit = Interest Saved - Prepayment Penalty
+   ```
+
+5. Risk Scoring:
+   ```
+   Payment Risk = (Days Past Due / 30) * Weight1 +
+                 (Missed Payments / Total Payments) * Weight2 +
+                 (1 - Payment Amount / Due Amount) * Weight3
+   
+   Collateral Coverage = Collateral Value / Outstanding Balance
+   
+   Total Risk Score = Base Risk * (1 - Collateral Coverage) *
+                     Payment History Factor
+   ```
+
+A. Client Analytics:
+1. Customer Lifetime Value:
+   - Base CLV = Sum of all revenue streams
+   - Adjusted CLV = Base CLV * (1 + retention_factor) * (1 - churn_probability)
+   - Future Value = CLV * growth_rate * time_horizon
+
+2. Engagement Score:
+   - Digital Usage: (ATM + Internet + SMS) / Total Channels
+   - Product Adoption: Number of active products / Total available products
+   - Transaction Activity: Frequency and recency of transactions
+   - Overall Score = Weighted average of all factors
+
+3. Customer Health:
+   - Account Status (40%): Active/Dormant/Inactive
+   - Product Usage (30%): Number and variety of products
+   - Transaction Patterns (30%): Frequency and value
+   - Health Score = Weighted sum of all components
+
+B. Product Performance:
+1. Product Metrics:
+   - Adoption Rate: Users / Total customers
+   - Revenue per Product: Total revenue / Number of products
+   - Product Profitability: Revenue - Costs
+   - Customer Satisfaction: Based on usage patterns
+
+2. Product Portfolio Analysis:
+   - Product Mix: Distribution across categories
+   - Cross-sell Ratio: Additional products per customer
+   - Product Lifecycle Stage: Growth/Maturity/Decline
+   - Portfolio Balance: Risk vs Return
+
+3. Channel Performance:
+   - Channel Usage: Transactions per channel
+   - Channel Costs: Operating costs per channel
+   - Channel Efficiency: Success rate of transactions
+   - Channel Preference: Customer usage patterns
+
+C. Loan Analytics:
+1. Interest Metrics:
+   a) Total Interest Paid:
+      - Calculation: SUM(monthly_payment * months_since_start) - SUM(original_amount)
+      - Purpose: Tracks actual interest revenue
+
+   b) Expected Interest:
+      - Calculation: SUM(original_amount * (interest_rate/100) * loan_term_years)
+      - Purpose: Projects total interest revenue
+
+2. Risk Metrics:
+   a) Default Risk Score (0-100):
+      - 90+ days past due: 100 points
+      - 60-90 days: 75 points
+      - 30-60 days: 50 points
+      - 1-30 days: 25 points
+      - Current: 0 points
+
+   b) Prepayment Risk Score:
+      - Based on percentage of loan paid off ahead of schedule
+      - >50% early payment: 75 points
+      - >25% early payment: 50 points
+      - <25% early payment: 25 points
+
+3. Profitability Metrics:
+   a) Loan Profitability:
+      - Calculation: total_interest_income / total_borrowers
+      - Includes: Interest earned, fees, penalties
+
+   b) CLV Contribution:
+      - Calculation: (total_interest_income / (borrowers * avg_loan_size)) * 100
+      - Shows loan's contribution to overall customer value
+
+4. Performance Metrics:
+   a) Delinquency Rate:
+      - Calculation: (delinquent_loans / total_loans) * 100
+      - Tracks portfolio quality
+
+   b) Cross-sell Score:
+      - Based on product adoption rates
+      - Considers multiple product relationships
+      - Indicates upsell potential
+
+6. TECHNICAL IMPLEMENTATION
+--------------------------
+A. Machine Learning Components:
+1. Churn Prediction:
+   - Uses historical customer behavior
+   - Features: transaction frequency, balance trends, product usage
+   - Model: Gradient Boosting Classifier
+   - Output: Churn probability score
+
+2. Customer Segmentation:
+   - Clustering based on behavior patterns
+   - Features: loan amount, payment history, product relationships
+   - Model: K-means clustering
+   - Output: Customer segment assignments
+
+3. Cross-sell Recommendations:
+   - Collaborative filtering approach
+   - Features: product usage patterns, customer demographics
+   - Model: Matrix factorization
+   - Output: Product recommendations
+
+4. Risk Assessment:
+   - Predictive modeling for default risk
+   - Features: payment history, loan characteristics
+   - Model: Random Forest Classifier
+   - Output: Risk score and contributing factors
+
+B. Predictive Analytics:
+1. Future Value Prediction:
+   - Projects customer value over time
+   - Considers multiple revenue streams
+   - Accounts for risk factors
+   - Provides confidence intervals
+
+2. Portfolio Optimization:
+   - Risk-return analysis
+   - Product mix recommendations
+   - Resource allocation suggestions
+   - Growth opportunity identification
+
+3. Early Warning System:
+   - Monitors key risk indicators
+   - Identifies potential issues
+   - Triggers automated alerts
+   - Suggests preventive actions
+
+C. Implementation Details:
+1. Data Import Process:
+   - Reads Excel files (M_PROJ_INFO.xlsx, M_PROJ_FINBAL.xlsx, M_REPMT_SCHD.xlsx)
+   - Validates and transforms data
+   - Loads into SQLite database
+   - Creates necessary indexes for performance
+
+2. API Endpoints:
+   a) /api/loans:
+      - Provides paginated loan data
+      - Supports individual and aggregated views
+      - Includes account details and payment history
+
+   b) /api/loan-metrics:
+      - Calculates real-time metrics
+      - Uses caching for performance
+      - Returns comprehensive analytics
+
+3. Caching Strategy:
+   - User-specific caching with @cache.memoize
+   - 5-minute cache timeout
+   - Ensures consistent metric display
+
+4. Database Optimization:
+   - Indexed key columns
+   - Optimized query structure
+   - Efficient join operations
+
+7. USER INTERFACE & REPORTING
+---------------------------
+A. User Interface Components:
+1. Dashboard:
+   - Overview metrics
+   - Key performance indicators
+   - Quick action buttons
+   - Alert notifications
+
+2. Client Management:
+   - Client search and filtering
+   - Detailed client profiles
+   - Activity history
+   - Relationship summary
+
+3. Product Management:
+   - Product catalog
+   - Performance metrics
+   - Lifecycle tracking
+   - Bundle recommendations
+
+4. Channel Analytics:
+   - Channel usage statistics
+   - Transaction monitoring
+   - Success rates
+   - Cost analysis
+
+B. Reporting Capabilities:
+1. Standard Reports:
+   - Customer analytics
+   - Product performance
+   - Risk assessment
+   - Financial metrics
+
+2. Custom Reports:
+   - Flexible parameters
+   - Multiple formats (PDF, CSV)
+   - Scheduled generation
+   - Email distribution
+
+3. Interactive Analytics:
+   - Dynamic filtering
+   - Drill-down capabilities
+   - Custom visualizations
+   - Export options
+
+8. USER GUIDE
+------------
+1. Navigation:
+   - Login using credentials
+   - Access main dashboard
+   - Navigate through sections:
+     * DATA: View loan information
+     * METRICS: Access analytics
+     * INSIGHTS: Get recommendations
+
+2. Viewing Loans:
+   - Individual view shows loan-level details
+   - Aggregated view provides portfolio summary
+   - Use filters and pagination for navigation
+
+3. Using Metrics:
+   - Click METRICS section to view analytics
+   - Monitor key performance indicators
+   - Track risk and profitability metrics
+
+4. Data Quality:
+   - Review identified issues
+   - Resolve data problems
+   - Monitor data accuracy
+
+Best Practices:
+1. Regularly monitor risk metrics
+2. Review profitability trends
+3. Address data quality issues promptly
+4. Use insights for decision-making
+
+This platform provides a comprehensive solution for tracking and analyzing customer lifetime value through loan performance and customer behavior. It combines robust data processing with intuitive visualization to deliver actionable insights for financial institutions.
+
+9. CONCEPTS & CALCULATIONS EXPLAINED
+---------------------------------
+This section explains key concepts and calculations in plain language for both technical and risk management professionals.
+
+A. Understanding Customer Value:
+1. Customer Lifetime Value (CLV):
+   Definition: The total net profit a customer is expected to generate over their entire relationship with the institution.
+   
+   For Technical Teams:
+   ```
+   Base CLV = Σ(Annual Revenue * Retention Probability)
+   Adjusted CLV = Base CLV * (1 + Growth) * (1 - Churn Risk)
+   ```
+   
+   For Risk Teams:
+   - Start with current annual revenue
+   - Factor in historical retention rates
+   - Adjust for growth potential
+   - Account for churn risk
+   - Consider product relationships
+
+2. Risk Assessment:
+   Definition: Evaluation of potential losses from customer relationships.
+   
+   Technical Implementation:
+   ```
+   Risk Score = (DPD Factor * 0.4) + 
+                (Payment History * 0.3) + 
+                (Product Usage * 0.3)
+   ```
+   
+   Risk Interpretation:
+   - DPD Factor: Days Past Due impact
+   - Payment History: Historical payment behavior
+   - Product Usage: Relationship strength indicator
+   - Score ranges from 0 (lowest risk) to 100 (highest risk)
+
+B. Loan Performance Metrics:
+1. Interest Calculations:
+   Definition: Methods for determining loan costs and returns.
+   
+   Technical Formula:
+   ```
+   Monthly Interest = Principal * (Annual Rate / 12)
+   Total Interest = Σ(Monthly Interest over Term)
+   ```
+   
+   Business Context:
+   - Principal: Original loan amount
+   - Annual Rate: Yearly interest percentage
+   - Term: Total loan duration
+   - Monthly calculation ensures accurate accrual
+
+2. Payment Analysis:
+   Definition: Assessment of payment behavior and impact.
+   
+   Technical View:
+   ```
+   Payment Ratio = Actual Payment / Expected Payment
+   Delinquency Rate = (Delinquent Loans / Total Loans) * 100
+   ```
+   
+   Risk Perspective:
+   - Track payment consistency
+   - Monitor delinquency trends
+   - Assess portfolio quality
+   - Identify early warning signs
+
+C. Channel Performance:
+1. Usage Analytics:
+   Definition: Analysis of how customers interact with different banking channels.
+   
+   Technical Metrics:
+   ```
+   Channel Score = (Volume * 0.4) + 
+                  (Success Rate * 0.3) + 
+                  (Revenue * 0.3)
+   ```
+   
+   Business Impact:
+   - Volume: Transaction frequency
+   - Success Rate: Reliability
+   - Revenue: Channel profitability
+   - Customer preference insights
+
+2. Efficiency Metrics:
+   Definition: Measures of channel operational effectiveness.
+   
+   Technical Calculation:
+   ```
+   Efficiency = Successful Transactions / Total Attempts
+   Cost per Transaction = Operating Cost / Transaction Volume
+   ```
+   
+   Operational View:
+   - Success rates
+   - Cost efficiency
+   - Resource utilization
+   - Service quality
+
+D. Portfolio Management:
+1. Portfolio Health:
+   Definition: Overall assessment of loan portfolio quality.
+   
+   Technical Metrics:
+   ```
+   Portfolio Score = (Performance * 0.4) +
+                    (Risk Level * 0.3) +
+                    (Growth * 0.3)
+   ```
+   
+   Risk Analysis:
+   - Performance: Current state
+   - Risk Level: Potential issues
+   - Growth: Future potential
+   - Trend analysis
+
+2. Profitability Analysis:
+   Definition: Assessment of portfolio financial performance.
+   
+   Technical Formula:
+   ```
+   Net Profit = Interest Income + 
+                Fees - 
+                (Defaults + Operating Costs)
+   ROI = (Net Profit / Total Investment) * 100
+   ```
+   
+   Business Context:
+   - Income sources
+   - Cost factors
+   - Loss impact
+   - Return metrics
+
+E. Early Warning Indicators:
+1. Risk Triggers:
+   Definition: Signals that indicate potential future issues.
+   
+   Technical Implementation:
+   ```
+   Risk Flag = ANY(
+     Payment Delay > 30 days OR
+     Usage Drop > 50% OR
+     Balance Decline > 25%
+   )
+   ```
+   
+   Risk Monitoring:
+   - Payment patterns
+   - Usage changes
+   - Balance trends
+   - Behavioral shifts
+
+2. Intervention Metrics:
+   Definition: Measures that determine when to take action.
+   
+   Technical Threshold:
+   ```
+   Action Score = (Risk Level * 0.5) +
+                 (Relationship Value * 0.3) +
+                 (Recovery Potential * 0.2)
+   ```
+   
+   Business Application:
+   - Risk assessment
+   - Value consideration
+   - Recovery likelihood
+   - Action prioritization
+
+8. SYSTEM REQUIREMENTS & DEPLOYMENT
+--------------------------------
+A. System Requirements:
+1. Software Dependencies:
+   - Python 3.8 or higher
+   - SQLite 3
+   - Required Python packages:
+     * Flask
+     * Pandas
+     * NumPy
+     * Scikit-learn
+     * Flask-Caching
+     * Openpyxl
+     * PDFKit
+
+2. Hardware Requirements:
+   - Minimum 4GB RAM
+   - 2GB free disk space
+   - Modern web browser
+   - Network connectivity
+
+B. Installation Steps:
+1. Environment Setup:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. Database Setup:
+   ```bash
+   python create_schema.py
+   python setup_db.py
+   ```
+
+3. Data Import:
+   ```bash
+   python import_loan_data.py
+   python import_products.py
+   python import_charges.py
+   ```
+
+C. Deployment Options:
+1. Development:
+   - Run with Flask development server
+   - Use SQLite database
+   - Enable debug mode
+
+2. Production:
+   - Use production WSGI server (e.g., Gunicorn)
+   - Consider PostgreSQL for database
+   - Enable caching
+   - Configure logging
+
+D. Maintenance:
+1. Regular Tasks:
+   - Daily data imports
+   - Weekly backup
+   - Monthly system updates
+   - Quarterly model retraining
+
+2. Monitoring:
+   - System performance
+   - Data quality metrics
+   - API response times
+   - Cache hit rates
+
+3. Security:
+   - Regular security updates
+   - Access control management
+   - Data encryption
+   - Audit logging

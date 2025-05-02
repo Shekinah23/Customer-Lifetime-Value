@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XPLUG-ANALYTICA - Prediction</title>
+    <title>Error - XPLUG-ANALYTICA</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
         :root {
@@ -26,14 +26,10 @@
             color: var(--gold);
             background: rgba(255, 255, 255, 0.1);
         }
-        .nav-link.active {
-            color: var(--gold);
-            background: rgba(255, 255, 255, 0.15);
-        }
     </style>
 </head>
 <body class="bg-gray-50">
-    <!-- Header with Navigation -->
+    <!-- Header -->
     <header class="glass-header shadow fixed w-full z-50">
         <div class="container mx-auto px-4">
             <div class="flex items-center justify-between h-16">
@@ -48,30 +44,36 @@
                     <a href="/loans" class="nav-link">Loans</a>
                     <a href="/reports" class="nav-link">Reports</a>
                     <a href="/data-quality" class="nav-link">Data Quality</a>
-                    <button onclick="logout()" class="nav-link">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                        </svg>
-                    </button>
                 </nav>
             </div>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <div class="pt-20 px-4">
-        <div class="max-w-7xl mx-auto">
-            <div class="bg-white rounded-lg shadow-lg p-6">
-                <h2 class="text-2xl font-bold mb-6" style="color: var(--navy-blue);">Prediction</h2>
-                <!-- Add prediction content here -->
+    <!-- Error Content -->
+    <div class="pt-20 px-4 min-h-screen flex items-center justify-center">
+        <div class="max-w-lg w-full bg-white rounded-lg shadow-lg p-8 text-center">
+            <div class="mb-6">
+                <svg class="w-16 h-16 mx-auto text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
             </div>
+            <h2 class="text-2xl font-bold mb-4" style="color: var(--navy-blue);">{{ error }}</h2>
+            <p class="text-gray-600 mb-8">{{ message }}</p>
+            <a href="javascript:history.back()" class="inline-block px-6 py-3 rounded-lg text-white transition-colors duration-200" style="background-color: var(--navy-blue); border: 1px solid var(--gold);">
+                Go Back
+            </a>
         </div>
     </div>
 
     <script>
-        function logout() {
-            window.location.href = '/logout';
-        }
+        // Automatically go back if clicked outside the error box after 0.5 seconds
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.max-w-lg')) {
+                setTimeout(function() {
+                    history.back();
+                }, 500);
+            }
+        });
     </script>
 </body>
 </html>

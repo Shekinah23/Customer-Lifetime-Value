@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loans - XPLUG-ANALYTICA</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --navy-blue: #41416f;
+            --gold: #FFD700;
+            --white: #FFFFFF;
+        }
+        .glass-header {
+            background: rgba(99, 99, 185, 0.9);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .nav-link {
+            color: var(--white);
+            transition: all 0.3s ease;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+        }
+        .nav-link:hover {
+            color: var(--gold);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .nav-link.active {
+            color: var(--gold);
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .section-card {
+            background: var(--white);
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+        }
+        .section-card:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header with Navigation -->
+    <header class="glass-header shadow fixed w-full z-50">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Logo" class="w-auto mr-3 p-2 bg-white rounded" style="height: 38px; min-width: 38px;">
+                    <h1 class="text-2xl font-bold text-white">XPLUG-ANALYTICA</h1>
+                </div>
+                <nav class="flex items-center space-x-4">
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    <a href="/clients" class="nav-link">Clients</a>
+                    <a href="/products" class="nav-link">Products</a>
+                    <a href="/loans" class="nav-link active">Loans</a>
+                    <a href="/reports" class="nav-link">Reports</a>
+                    <a href="/data-quality" class="nav-link">Data Quality</a>
+                    <button onclick="logout()" class="nav-link">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="pt-20 px-4 h-screen flex flex-col">
+        <div class="max-w-7xl mx-auto w-full flex-1 flex flex-col">
+            <!-- Section Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <!-- DATA Section -->
+                <div class="section-card p-6 cursor-pointer" onclick="showSection('data')">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">DATA</h2>
+                        <div class="text-navy-blue hover:text-gold transition-colors">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Click to view loan data and transactions</p>
+                </div>
+
+                <!-- METRICS Section -->
+                <div class="section-card p-6 cursor-pointer" onclick="showSection('metrics')">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">METRICS</h2>
+                        <div class="text-navy-blue hover:text-gold transition-colors">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Click to view loan performance metrics</p>
+                </div>
+
+                <!-- INSIGHTS Section -->
+                <div class="section-card p-6 cursor-pointer" onclick="showSection('insights')">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">INSIGHTS</h2>
+                        <div class="text-navy-blue hover:text-gold transition-colors">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Click to view loan insights and analysis</p>
+                </div>
+            </div>
+
+            <!-- Content Sections -->
+            <div id="sectionContent" class="mt-8 flex-1 flex flex-col">
+                <!-- DATA Content -->
+                <div id="dataContent" class="section-content hidden flex-1 flex flex-col">
+                    <div class="bg-white rounded-lg shadow p-6 flex-1 flex flex-col">
+
+                          <!-- Search Field -->
+                    <div class="flex items-center justify-between mb-4 space-x-4">
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-4">
+                                <div class="flex-1">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Search Loan</label>
+                                    <input type="text" id="search" value="{{ search if search else '' }}" 
+                                           placeholder="Search by Account number, loan type, or maturity date" 
+                                           class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-navy-blue focus:border-navy-blue"
+                                           onkeyup="handleSearch()">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Rows per page</label>
+                                    <select id="perPage" class="bg-white border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-navy-blue focus:border-navy-blue">
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                                    <select id="currencyFilter" class="bg-white border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-navy-blue focus:border-navy-blue">
+                                        <option value="all">All Currencies</option>
+                                        <option value="USD">USD</option>
+                                        <option value="ZWL">ZWL</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loading Indicator -->
+                    <div id="loadingIndicator" class="hidden">
+                        <div class="flex items-center justify-center p-12">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-navy-blue"></div>
+                        </div>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="errorMessage" class="hidden">
+                        <div class="text-red-600 text-center p-4">
+                            Error loading loan data. Please try again.
+                        </div>
+                    </div>
+
+                <!-- Loan Data Table -->
+                <div class="flex flex-col flex-1">
+                    <div id="loanTableContainer" class="overflow-x-auto">
+                        <!-- Table content will be loaded here -->
+                    </div>
+                    
+                    <!-- Pagination Controls (Always Visible) -->
+                    <div id="paginationControls" class="mt-4 p-4 border-t border-gray-200 bg-gray-100 rounded-b-lg">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <p class="text-sm font-medium text-gray-700" id="pageInfo" data-current-page="1" data-total-pages="1">
+                                    Loading pagination...
+                                </p>
+                                <p class="text-sm font-medium text-gray-700 ml-4" id="recordsInfo">
+                                    Loading records...
+                                </p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <button id="prevPageBtn" onclick="goToPrevPage()" 
+                                        class="px-6 py-2 text-sm font-medium bg-navy-blue text-black rounded hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    ← Previous
+                                </button>
+                                <button id="nextPageBtn" onclick="goToNextPage()" 
+                                        class="px-6 py-2 text-sm font-medium bg-navy-blue text-black rounded hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    Next →
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                    </div>
+                </div>
+
+                <!-- METRICS Content -->
+                <div id="metricsContent" class="section-content hidden flex-1">
+                    <div class="bg-white rounded-lg shadow p-6 h-full">
+                        <h3 class="text-lg font-semibold mb-4">Loan Performance Metrics</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <!-- Interest Metrics -->
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Interest</h4>
+                                <div class="space-y-2">
+                                    <div>
+                                        <p class="text-xs text-gray-500">Total Interest Paid</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="totalInterestPaid">Loading...</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-gray-500">Expected Interest</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="expectedInterest">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Risk Metrics -->
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Risk Assessment</h4>
+                                <div class="space-y-2">
+                                    <div>
+                                        <p class="text-xs text-gray-500">Prepayment Risk Score</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="prepaymentRisk">Loading...</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-gray-500">Default Risk Score</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="defaultRisk">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Profitability Metrics -->
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Profitability</h4>
+                                <div class="space-y-2">
+                                    <div>
+                                        <p class="text-xs text-gray-500">Loan Profitability</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="loanProfitability">Loading...</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-gray-500">CLV Contribution</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="clvContribution">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Performance Metrics -->
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Performance</h4>
+                                <div class="space-y-2">
+                                    <div>
+                                        <p class="text-xs text-gray-500">Delinquency Rate</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="delinquencyRate">Loading...</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-gray-500">Cross-sell Score</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="crossSellScore">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Time Metrics -->
+                            <div class="bg-gray-50 rounded-lg p-4 md:col-span-2 lg:col-span-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Portfolio Timeline</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <p class="text-xs text-gray-500">Average Time Remaining</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="avgTimeRemaining">Loading...</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-gray-500">Earliest Maturity</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="earliestMaturity">Loading...</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-gray-500">Latest Maturity</p>
+                                        <p class="text-lg font-bold text-navy-blue" id="latestMaturity">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INSIGHTS Content -->
+                <div id="insightsContent" class="section-content hidden flex-1">
+                    <div class="bg-white rounded-lg shadow p-6 h-full">
+                        <h3 class="text-lg font-semibold mb-4">Loan Insights and Analysis</h3>
+                        <p class="text-gray-600">Insights content will be added here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment History Modal -->
+    <div id="paymentHistoryModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 border-b pb-3">
+                <h3 class="text-lg font-semibold text-navy-blue flex items-center" id="modalTitle">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span>All Transactions - Account ${projId}</span>
+                </h3>
+                <button onclick="closePaymentHistoryModal()" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="loanDetailsSummary" class="mb-4 bg-gray-50 p-3 rounded-lg text-sm">
+                <!-- Loan summary details will be inserted here -->
+            </div>
+            <div id="paymentHistoryContent" class="mt-4">
+                <!-- Payment history content will be loaded here -->
+                <div id="paymentHistoryLoading" class="flex items-center justify-center p-12">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-navy-blue"></div>
+                </div>
+                <div id="paymentHistoryError" class="hidden text-red-600 text-center p-4">
+                    Error loading payment history. Please try again.
+                </div>
+                <div id="paymentHistoryTable" class="hidden">
+                    <!-- Table will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function logout() {
+            window.location.href = '/logout';
+        }
+
+        // Add functions for pagination controls
+        function goToNextPage() {
+            const perPage = document.getElementById('perPage').value;
+            const currentPage = parseInt(document.getElementById('pageInfo').getAttribute('data-current-page') || 1);
+            loadLoanData('individual', currentPage + 1, perPage);
+        }
+        
+        function goToPrevPage() {
+            const perPage = document.getElementById('perPage').value;
+            const currentPage = parseInt(document.getElementById('pageInfo').getAttribute('data-current-page') || 1);
+            loadLoanData('individual', Math.max(1, currentPage - 1), perPage);
+        }
+        
+        // Load loan data from API
+        async function loadLoanData(viewType = 'individual', page = 1, perPage = 20) {
+            const tableContainer = document.getElementById('loanTableContainer');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const errorMessage = document.getElementById('errorMessage');
+            const currencyFilter = document.getElementById('currencyFilter').value;
+            const pageInfo = document.getElementById('pageInfo');
+
+            try {
+                // Show loading indicator
+                loadingIndicator.classList.remove('hidden');
+                tableContainer.classList.add('hidden');
+                errorMessage.classList.add('hidden');
+
+                // Fetch data from API with currency filter parameter
+                const url = `/api/loans?view=individual&page=${page}&per_page=${perPage}${currencyFilter !== 'all' ? `&currency=${currencyFilter}` : ''}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to load loan data');
+                const data = await response.json();
+
+                // Store current page for pagination
+                pageInfo.setAttribute('data-current-page', data.current_page);
+                pageInfo.setAttribute('data-total-pages', data.total_pages);
+                pageInfo.textContent = `Page ${data.current_page} of ${data.total_pages}`;
+                
+                // Update records information
+                const recordsInfo = document.getElementById('recordsInfo');
+                
+                // Update records count display
+                recordsInfo.textContent = `Showing ${data.loans.length} loans${currencyFilter !== 'all' ? ` in ${currencyFilter}` : ''} (Total: ${data.total_count})`;
+
+                // Update pagination buttons state
+                document.getElementById('prevPageBtn').disabled = data.current_page <= 1;
+                document.getElementById('nextPageBtn').disabled = data.current_page >= data.total_pages;
+                
+                // Add appropriate classes for disabled state
+                if (data.current_page <= 1) {
+                    document.getElementById('prevPageBtn').classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    document.getElementById('prevPageBtn').classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+                
+                if (data.current_page >= data.total_pages) {
+                    document.getElementById('nextPageBtn').classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    document.getElementById('nextPageBtn').classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+
+                // Create table HTML
+                const tableHtml = `
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account Number</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan Type</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Amount</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding Balance</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest Rate</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Maturity Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monthly Payment</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment History</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Origination Date</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${data.loans.map(loan => `
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.acc_num || loan.account_number || ""}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.loan_type || ""}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(loan.original_amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(loan.outstanding_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(loan.interest_rate || 0).toFixed(2)}%</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.start_date || ""}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.maturity_date || ""}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(loan.monthly_payment || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                            loan.status === 'Current' ? 'bg-green-100 text-green-800' :
+                                            loan.status === 'Late' ? 'bg-yellow-100 text-yellow-800' :
+                                            loan.status === 'Defaulted' ? 'bg-red-100 text-red-800' :
+                                            loan.status === 'Active' ? 'bg-green-100 text-green-800' :
+                                            loan.status === 'Inactive' ? 'bg-yellow-100 text-yellow-800' :
+                                            loan.status === 'At Risk' ? 'bg-red-100 text-red-800' :
+                                            'bg-gray-100 text-gray-800'
+                                        }">
+                                            ${loan.status || "Unknown"}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <button onclick="showPaymentHistory(${loan.id || loan.account_number || 0}, '${loan.loan_type || "Unknown"}', '${loan.origination_date || loan.start_date || ""}')" 
+                                                class="text-navy-blue hover:text-gold focus:outline-none bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded flex items-center justify-center" 
+                                                title="View payment history">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                            </svg>
+                                            <span>View</span>
+                                        </button>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.origination_date || loan.start_date || ""}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                // Update table container
+                tableContainer.innerHTML = tableHtml;
+                tableContainer.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading loan data:', error);
+                errorMessage.classList.remove('hidden');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        // Handle per page changes
+        document.getElementById('perPage').addEventListener('change', function() {
+            loadLoanData('individual', 1, this.value);
+        });
+
+        // Handle search functionality
+        function handleSearch() {
+            const searchText = document.getElementById('search').value.toLowerCase();
+            const rows = document.querySelectorAll('#loanTableContainer tbody tr');
+
+            rows.forEach(row => {
+                const accountNumber = row.children[0].textContent.toLowerCase();
+                const loanType = row.children[1].textContent.toLowerCase();
+                const maturityDate = row.children[6].textContent.toLowerCase();
+                
+                if (accountNumber.includes(searchText) || 
+                    loanType.includes(searchText) || 
+                    maturityDate.includes(searchText)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        // Set initial selections and load data
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const perPage = urlParams.get('per_page') || '20';
+            
+            document.getElementById('perPage').value = perPage;
+            
+            // Fetch available currencies from API
+            loadCurrencyOptions();
+            
+            // Show DATA section by default and load data
+            showSection('data');
+            loadLoanData('individual', 1, perPage);
+        });
+
+        // Load currency options from API
+        async function loadCurrencyOptions() {
+            try {
+                const response = await fetch('/api/loan-currencies');
+                if (!response.ok) throw new Error('Failed to load currency options');
+                const data = await response.json();
+                
+                if (data.currencies && data.currencies.length > 0) {
+                    const currencySelect = document.getElementById('currencyFilter');
+                    // Keep the "All Currencies" option
+                    const allOption = currencySelect.options[0];
+                    
+                    // Clear existing options except the first one
+                    currencySelect.innerHTML = '';
+                    currencySelect.appendChild(allOption);
+                    
+                    // Add currencies from API
+                    data.currencies.forEach(currency => {
+                        const option = document.createElement('option');
+                        option.value = currency;
+                        option.textContent = currency;
+                        currencySelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading currency options:', error);
+            }
+        }
+
+        // Load loan metrics from API
+        async function loadLoanMetrics() {
+            try {
+                const response = await fetch('/api/loan-metrics');
+                if (!response.ok) throw new Error('Failed to load loan metrics');
+                const metrics = await response.json();
+
+                // Get primary currency
+                const currencies = metrics.currencies ? metrics.currencies.split(',') : ['USD'];
+                const primaryCurrency = currencies[0] || 'USD';
+
+                // Update Interest Metrics with currency
+                document.getElementById('totalInterestPaid').textContent = `$${(metrics.total_interest_paid || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('expectedInterest').textContent = `$${(metrics.expected_interest || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+
+                // Update Risk Metrics
+                document.getElementById('prepaymentRisk').textContent = `${(metrics.prepayment_risk_score || 0).toFixed(1)}%`;
+                document.getElementById('defaultRisk').textContent = `${(metrics.default_risk_score || 0).toFixed(1)}%`;
+
+                // Update Profitability Metrics with currency
+                document.getElementById('loanProfitability').textContent = `$${(metrics.loan_profitability || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('clvContribution').textContent = `${(metrics.clv_contribution || 0).toFixed(1)}%`;
+
+                // Update Performance Metrics
+                document.getElementById('delinquencyRate').textContent = `${(metrics.delinquency_rate || 0).toFixed(2)}%`;
+                document.getElementById('crossSellScore').textContent = (metrics.cross_sell_score || 0).toFixed(1);
+
+                // Update Time Metrics
+                document.getElementById('avgTimeRemaining').textContent = `${metrics.avg_time_remaining || 0} months`;
+                document.getElementById('earliestMaturity').textContent = metrics.earliest_maturity || 'N/A';
+                document.getElementById('latestMaturity').textContent = metrics.latest_maturity || 'N/A';
+
+            } catch (error) {
+                console.error('Error loading loan metrics:', error);
+                // Show error state for metrics
+                document.querySelectorAll('[id$="Risk"], [id$="Score"], [id$="Rate"]').forEach(el => {
+                    el.textContent = 'Error loading data';
+                });
+            }
+        }
+
+        function showSection(sectionName) {
+            // Hide all sections
+            document.querySelectorAll('.section-content').forEach(section => {
+                section.classList.add('hidden');
+            });
+            
+            // Show selected section
+            document.getElementById(sectionName + 'Content').classList.remove('hidden');
+            
+            // Update active state of section cards
+            document.querySelectorAll('.section-card').forEach(card => {
+                card.classList.remove('bg-navy-blue', 'text-white');
+            });
+            
+            // Highlight selected section card
+            const selectedCard = document.querySelector(`.section-card[onclick="showSection('${sectionName}')"]`);
+            selectedCard.classList.add('bg-navy-blue', 'text-white');
+
+            // Load metrics if metrics section is shown
+            if (sectionName === 'metrics') {
+                loadLoanMetrics();
+            }
+        }
+
+        // Show payment history modal
+        async function showPaymentHistory(projId, loanType, originationDate) {
+            // Show modal
+            const modal = document.getElementById('paymentHistoryModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Show loading indicator
+            const loadingIndicator = document.getElementById('paymentHistoryLoading');
+            const errorMessage = document.getElementById('paymentHistoryError');
+            const tableContainer = document.getElementById('paymentHistoryTable');
+            
+            loadingIndicator.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            
+            // Update modal title
+            document.getElementById('modalTitle').innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <span>All Transactions - Account ${projId}</span>
+            `;
+            
+            try {
+                // Fetch payment history data
+                const response = await fetch(`/api/loan-payments/${projId}/${loanType}/${encodeURIComponent(originationDate)}`);
+                if (!response.ok) throw new Error('Failed to load payment history');
+                const data = await response.json();
+                
+                // Create table HTML
+                let tableHtml = '';
+                
+                if (data.payments && data.payments.length > 0) {
+                    tableHtml = `
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Principal</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${data.payments.map(payment => `
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${payment.date}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${payment.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${payment.principal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${payment.interest.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                                payment.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                                                payment.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                payment.status === 'Failed' ? 'bg-red-100 text-red-800' :
+                                                'bg-gray-100 text-gray-800'
+                                            }">
+                                                ${payment.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    tableHtml = `
+                        <div class="text-center py-8">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <p class="mt-4 text-gray-600">No payment history available for this loan.</p>
+                            <p class="text-sm text-gray-500 mt-2">Future payments will appear here once processed.</p>
+                        </div>
+                    `;
+                }
+                
+                // Update table container
+                tableContainer.innerHTML = tableHtml;
+                tableContainer.classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Error loading payment history:', error);
+                errorMessage.classList.remove('hidden');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+        
+        // Close payment history modal
+        function closePaymentHistoryModal() {
+            const modal = document.getElementById('paymentHistoryModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // Add event listener for currency filter
+        document.getElementById('currencyFilter').addEventListener('change', function() {
+            loadLoanData('individual', 1, document.getElementById('perPage').value);
+        });
+    </script>
+</body>
+</html>

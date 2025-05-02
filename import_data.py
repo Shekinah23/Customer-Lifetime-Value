@@ -7,9 +7,15 @@ def import_data():
     """Import data from CSV files into SQLite database"""
     print("Starting import process...")
     
-    # Connect to database
-    conn = sqlite3.connect('banking_data.db')
+    # Connect to database using same path as app.py and check_db.py
+    db_path = 'banking_data.db'
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    
+    # Create tables using schema
+    with open('data_processor/schema.sql', 'r') as f:
+        schema = f.read()
+        conn.executescript(schema)
     
     try:
         # Import clients data

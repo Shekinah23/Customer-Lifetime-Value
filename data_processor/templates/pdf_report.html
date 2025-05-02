@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>CLV Analytics Report</title>
+    <title>XPlug Analytica Report</title>
     <style>
         @page {
             size: letter portrait;
@@ -90,7 +90,7 @@
 <body>
     <div class="header">
         <img src="{{ url_for('static', filename='logo/logo.png', _external=True) }}" alt="Logo" class="logo">
-        <h1>CLV Analytics Report</h1>
+        <h1>XPlug Analytica Report</h1>
         <p>Generated on {{ datetime.now().strftime('%B %d, %Y at %I:%M %p') }}</p>
         <p>Period: {{ period_text }}</p>
     </div>
@@ -180,7 +180,7 @@
 
     <div class="footer">
         <p>This report is confidential and for internal use only.</p>
-        <p>© {{ datetime.now().year }} CLV Analytics. All rights reserved.</p>
+        <p>© {{ datetime.now().year }} XPlug Analytica. All rights reserved.</p>
     </div>
 </body>
 </html>

@@ -368,4 +368,4 @@ def get_bundling_recommendations() -> List[Dict[str, Any]]:
         
     except Exception as e:
         print(f"Error getting bundling recommendations: {str(e)}")
-        return []
+        return [] 

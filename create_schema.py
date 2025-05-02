@@ -3,11 +3,11 @@ import os
 
 def create_schema():
     # Read the SQL schema
-    with open('schema.sql', 'r') as f:
+    with open('data_processor/schema.sql', 'r') as f:
         schema_sql = f.read()
     
     # Connect to the database
-    conn = sqlite3.connect('banking_data.db')
+    conn = sqlite3.connect('data_processor/banking_data.db')
     cursor = conn.cursor()
     
     try:
