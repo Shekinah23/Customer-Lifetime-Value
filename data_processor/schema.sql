@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS retention_actions;
 DROP TABLE IF EXISTS retention_action_types;
 DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS accounts;
 DROP TABLE IF EXISTS clients;
 
 -- Clients table schema (must be created first for foreign key constraints)
@@ -25,6 +26,27 @@ CREATE TABLE clients (
     ACNTS_DORMANT_ACNT INTEGER,
     ACNTS_INOP_ACNT INTEGER
 );
+
+-- Accounts table schema
+CREATE TABLE accounts (
+    ACNTS_INTERNAL_ACNUM INTEGER PRIMARY KEY,
+    ACNTS_BRN_CODE INTEGER,
+    ACNTS_CLIENT_NUM INTEGER,
+    ACNTS_PROD_CODE INTEGER,
+    ACNTS_AC_NAME1 TEXT,
+    ACNTS_AC_NAME2 TEXT,
+    ACNTS_SHORT_NAME TEXT,
+    ACNTS_CURR_CODE TEXT,
+    ACNTS_INOP_ACNT INTEGER,
+    ACNTS_DORMANT_ACNT INTEGER,
+    FOREIGN KEY (ACNTS_CLIENT_NUM) REFERENCES clients(ACNTS_CLIENT_NUM)
+);
+
+-- Create indexes for accounts
+CREATE INDEX IF NOT EXISTS idx_accounts_client_num ON accounts(ACNTS_CLIENT_NUM);
+CREATE INDEX IF NOT EXISTS idx_accounts_branch ON accounts(ACNTS_BRN_CODE);
+CREATE INDEX IF NOT EXISTS idx_accounts_prod_code ON accounts(ACNTS_PROD_CODE);
+CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(ACNTS_INOP_ACNT, ACNTS_DORMANT_ACNT);
 
 -- Data quality issues tracking table
 CREATE TABLE data_quality_issues (
@@ -130,22 +152,51 @@ CREATE INDEX IF NOT EXISTS idx_product_class ON products(PRODUCT_CLASS);
 
 -- Transactions table for pattern analysis
 CREATE TABLE IF NOT EXISTS transactions (
-    transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id INTEGER NOT NULL,
-    transaction_date TEXT NOT NULL,
-    amount REAL NOT NULL,
-    transaction_type TEXT NOT NULL,
-    channel TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'completed',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (client_id) REFERENCES clients(ACNTS_CLIENT_NUM)
+    TRAN_ENTITY_NUM INTEGER,
+    TRAN_BRN_CODE INTEGER,
+    TRAN_DATE_OF_TRAN TEXT,
+    TRAN_BATCH_NUMBER INTEGER,
+    TRAN_BATCH_SL_NUM INTEGER,
+    TRAN_PROD_CODE INTEGER,
+    TRAN_CODE INTEGER,
+    TRAN_VALUE_DATE TEXT,
+    TRAN_ACING_BRN_CODE INTEGER,
+    TRAN_INTERNAL_ACNUM INTEGER,
+    TRAN_CONTRACT_NUM TEXT,
+    TRAN_GLACC_CODE TEXT,
+    TRAN_DB_CR_FLG TEXT,
+    TRAN_TYPE_OF_TRAN TEXT,
+    TRAN_CURR_CODE TEXT,
+    TRAN_AMOUNT REAL,
+    TRAN_BASE_CURR_CODE TEXT,
+    TRAN_BASE_CURR_CONV_RATE REAL,
+    TRAN_BASE_CURR_EQ_AMT REAL,
+    TRAN_AMT_BRKUP TEXT,
+    TRAN_CHARGE_CODE TEXT,
+    TRAN_DELIVERY_CHANNEL_CODE TEXT,
+    TRAN_DEVICE_CODE TEXT,
+    TRAN_DEVICE_UNIT_NUMBER TEXT,
+    TRAN_PROFIT_CUST_CODE TEXT,
+    TRAN_ENTD_BY TEXT,
+    TRAN_ENTD_ON TEXT,
+    TRAN_LAST_MOD_BY TEXT,
+    TRAN_AUTH_BY TEXT,
+    TRAN_AUTH_ON TEXT,
+    TRAN_CHANNEL_DT_TIME TEXT,
+    TRAN_AVAILABLE_AC_BAL REAL,
+    TRAN_NARR_DTL1 TEXT,
+    TRAN_NARR_DTL2 TEXT,
+    TRAN_NARR_DTL3 TEXT,
+    TRAN_REF_CURR TEXT,
+    TRAN_REF_CURR_EQAMT REAL,
+    PRIMARY KEY (TRAN_ENTITY_NUM, TRAN_BRN_CODE, TRAN_DATE_OF_TRAN, TRAN_BATCH_NUMBER, TRAN_BATCH_SL_NUM)
 );
 
 -- Create indexes for transactions
-CREATE INDEX IF NOT EXISTS idx_transaction_client ON transactions(client_id);
-CREATE INDEX IF NOT EXISTS idx_transaction_date ON transactions(transaction_date);
-CREATE INDEX IF NOT EXISTS idx_transaction_type ON transactions(transaction_type);
-CREATE INDEX IF NOT EXISTS idx_transaction_channel ON transactions(channel);
+CREATE INDEX IF NOT EXISTS idx_transaction_date ON transactions(TRAN_DATE_OF_TRAN);
+CREATE INDEX IF NOT EXISTS idx_transaction_acnum ON transactions(TRAN_INTERNAL_ACNUM);
+CREATE INDEX IF NOT EXISTS idx_transaction_type ON transactions(TRAN_TYPE_OF_TRAN);
+CREATE INDEX IF NOT EXISTS idx_transaction_channel ON transactions(TRAN_DELIVERY_CHANNEL_CODE);
 
 -- Loan tables
 CREATE TABLE IF NOT EXISTS loan_info (

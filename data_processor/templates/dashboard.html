@@ -98,7 +98,7 @@
                 <!-- Total Revenue -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Total Revenue</h3>
-                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(revenue_metrics.total_revenue) }}</p>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ revenue_metrics.total_revenue|format_currency }}</p>
                     <div class="mt-2 space-y-1">
                         <span class="text-sm text-gray-600">From {{ revenue_metrics.contributing_clients }} clients</span>
                         <!-- Currency Breakdown -->
@@ -106,11 +106,11 @@
                             <h4 class="text-sm font-medium text-gray-700">Currency Breakdown</h4>
                             <div class="flex justify-between items-center text-sm">
                                 <span>USD</span>
-                                <span class="font-medium">${{ "{:,.2f}".format(revenue_metrics.usd_revenue or 0) }}</span>
+                                <span class="font-medium">{{ revenue_metrics.usd_revenue|format_currency }}</span>
                             </div>
                             <div class="flex justify-between items-center text-sm">
                                 <span>ZWL</span>
-                                <span class="font-medium">${{ "{:,.2f}".format(revenue_metrics.zwl_revenue or 0) }}</span>
+                                <span class="font-medium">{{ revenue_metrics.zwl_revenue|format_currency }}</span>
                             </div>
                         </div>
                         <!-- Contributors Breakdown -->
@@ -118,19 +118,19 @@
                             <h4 class="text-sm font-medium text-gray-700">Revenue Sources</h4>
                             <div class="flex justify-between items-center text-sm">
                                 <span>Loans</span>
-                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.loan_contribution or 100.0) }}</span>
+                                <span class="font-medium">{{ revenue_metrics.loan_contribution|format_percent }}</span>
                             </div>
                             <div class="flex justify-between items-center text-sm">
                                 <span>ATM</span>
-                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.atm_percentage or 33.33) }}</span>
+                                <span class="font-medium">{{ revenue_metrics.atm_percentage|format_percent }}</span>
                             </div>
                             <div class="flex justify-between items-center text-sm">
                                 <span>Internet</span>
-                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.internet_percentage or 50.0) }}</span>
+                                <span class="font-medium">{{ revenue_metrics.internet_percentage|format_percent }}</span>
                             </div>
                             <div class="flex justify-between items-center text-sm">
                                 <span>SMS</span>
-                                <span class="font-medium">{{ "{:.1f}%".format(revenue_metrics.sms_percentage or 16.67) }}</span>
+                                <span class="font-medium">{{ revenue_metrics.sms_percentage|format_percent }}</span>
                             </div>
                         </div>
                     </div>
@@ -157,15 +157,15 @@
                     <div class="space-y-2">
                         <div class="flex justify-between items-center">
                             <span class="text-sm text-gray-600">ATM</span>
-                            <span class="font-bold text-blue-600">${{ "{:,.2f}".format(revenue_metrics.atm_revenue) }}</span>
+                            <span class="font-bold text-blue-600">{{ revenue_metrics.atm_revenue|format_currency }}</span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-sm text-gray-600">Internet</span>
-                            <span class="font-bold text-green-600">${{ "{:,.2f}".format(revenue_metrics.internet_revenue) }}</span>
+                            <span class="font-bold text-green-600">{{ revenue_metrics.internet_revenue|format_currency }}</span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-sm text-gray-600">SMS</span>
-                            <span class="font-bold text-yellow-600">${{ "{:,.2f}".format(revenue_metrics.sms_revenue) }}</span>
+                            <span class="font-bold text-yellow-600">{{ revenue_metrics.sms_revenue|format_currency }}</span>
                         </div>
                     </div>
                 </div>
@@ -177,7 +177,7 @@
                 <!-- CLV Metrics -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Average CLV</h3>
-                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(metrics.avg_clv if not metrics.avg_clv is mapping else metrics.avg_clv.value) }}</p>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ metrics.avg_clv|format_currency }}</p>
                     <p class="text-sm mt-1 text-gray-600">Per customer value</p>
                     <div class="mt-2 flex items-center">
                         <span class="{{ 'trend-up' if metrics.clv_trend == 'Upward' else 'trend-down' }} text-sm font-medium">
@@ -189,24 +189,24 @@
                 <!-- CAC and Ratio -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">CLV:CAC Ratio</h3>
-                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ "{:.1f}".format(metrics.clv_cac_ratio) }}x</p>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ metrics.clv_cac_ratio|default('0.0') }}x</p>
                     <p class="text-sm mt-1 text-gray-600">Return on acquisition</p>
                     <div class="mt-2">
-                        <span class="text-sm text-gray-600">{{ metrics.cac_breakdown }}</span>
+                        <span class="text-sm text-gray-600">{{ metrics.cac_breakdown|default('No data available') }}</span>
                     </div>
                 </div>
 
                 <!-- Churn Metrics -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Churn Rate</h3>
-                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ "{:.1f}%".format(metrics.churn_rate) }}</p>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ metrics.churn_rate|format_percent }}</p>
                     <p class="text-sm mt-1 text-gray-600">Current period</p>
                     <div class="mt-2">
                         <span class="px-2 py-1 text-xs font-semibold rounded-full 
                             {{ 'bg-green-100 text-green-800' if metrics.churn_prediction == 'Low Risk' else 
                                'bg-yellow-100 text-yellow-800' if metrics.churn_prediction == 'Medium Risk' else 
                                'bg-red-100 text-red-800' }}">
-                            {{ metrics.churn_prediction }}
+                            {{ metrics.churn_prediction|default('Unknown') }}
                         </span>
                     </div>
                 </div>
@@ -217,17 +217,17 @@
                 <!-- Revenue Metrics -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Revenue per Customer</h3>
-                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">${{ "{:,.2f}".format(metrics.revenue_per_customer) }}</p>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ metrics.revenue_per_customer|format_currency }}</p>
                     <p class="text-sm mt-1 text-gray-600">Average monthly</p>
                     <div class="mt-2">
-                        <span class="text-sm text-gray-600">{{ "{:.1f}%".format(metrics.predicted_growth) }}% Growth Expected</span>
+                        <span class="text-sm text-gray-600">{{ metrics.predicted_growth|format_percent }} Growth Expected</span>
                     </div>
                 </div>
 
                 <!-- Retention Metrics -->
                 <div class="metric-card rounded-lg p-6">
                     <h3 class="text-lg font-semibold mb-2" style="color: var(--navy-blue);">Retention Rate</h3>
-                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ "{:.1f}%".format(metrics.retention_rate) }}</p>
+                    <p class="text-3xl font-bold" style="color: var(--navy-blue);">{{ metrics.retention_rate|format_percent }}</p>
                     <p class="text-sm mt-1 text-gray-600">Customer loyalty</p>
                     <div class="mt-2">
                         <span class="text-sm text-gray-600">Based on 12-month data</span>
@@ -291,15 +291,15 @@
                             <ul class="mt-2 space-y-2 text-sm">
                                 <li class="flex justify-between">
                                     <span>Digital Advertising</span>
-                                    <span>${{ "{:,.2f}".format(metrics.cac_digital_ads) }}</span>
+                                    <span>{{ metrics.cac_digital_ads|format_currency }}</span>
                                 </li>
                                 <li class="flex justify-between">
                                     <span>Content Marketing</span>
-                                    <span>${{ "{:,.2f}".format(metrics.cac_content) }}</span>
+                                    <span>{{ metrics.cac_content|format_currency }}</span>
                                 </li>
                                 <li class="flex justify-between">
                                     <span>Social Media</span>
-                                    <span>${{ "{:,.2f}".format(metrics.cac_social) }}</span>
+                                    <span>{{ metrics.cac_social|format_currency }}</span>
                                 </li>
                             </ul>
                         </div>
@@ -308,15 +308,15 @@
                             <ul class="mt-2 space-y-2 text-sm">
                                 <li class="flex justify-between">
                                     <span>Sales Team</span>
-                                    <span>${{ "{:,.2f}".format(metrics.cac_sales_team) }}</span>
+                                    <span>{{ metrics.cac_sales_team|format_currency }}</span>
                                 </li>
                                 <li class="flex justify-between">
                                     <span>Customer Support</span>
-                                    <span>${{ "{:,.2f}".format(metrics.cac_support) }}</span>
+                                    <span>{{ metrics.cac_support|format_currency }}</span>
                                 </li>
                                 <li class="flex justify-between">
                                     <span>Tools & Software</span>
-                                    <span>${{ "{:,.2f}".format(metrics.cac_tools) }}</span>
+                                    <span>{{ metrics.cac_tools|format_currency }}</span>
                                 </li>
                             </ul>
                         </div>
@@ -361,10 +361,30 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             // Parse JSON data safely for charts
-            const data = JSON.parse('{{ chart_data_json|safe }}');
+            let data;
+            try {
+                data = JSON.parse('{{ chart_data_json|safe }}');
+            } catch (e) {
+                console.error("Error parsing chart data:", e);
+                data = {
+                    cac_breakdown: {labels: [], data: []},
+                    segments: {labels: [], data: [], profitability: [], growth_rate: [], descriptions: []},
+                    revenue: {labels: [], data: []},
+                    churn_factors: {labels: [], data: [], details: []},
+                    channels: {labels: [], data: []},
+                    retention: {labels: [], data: []}
+                };
+            }
             
-            if (data.cac_breakdown) {
-                new Chart(document.getElementById('cacBreakdownChart').getContext('2d'), {
+            // Helper function to safely get chart element
+            function getChartContext(elementId) {
+                const canvas = document.getElementById(elementId);
+                if (!canvas) return null;
+                return canvas.getContext('2d');
+            }
+            
+            if (data.cac_breakdown && data.cac_breakdown.labels && getChartContext('cacBreakdownChart')) {
+                new Chart(getChartContext('cacBreakdownChart'), {
                     type: 'doughnut',
                     data: {
                         labels: data.cac_breakdown.labels,
@@ -393,160 +413,192 @@
             }
             
             // Customer Segments Chart with Profitability Highlights
-            new Chart(document.getElementById('customerSegmentsChart').getContext('2d'), {
-                type: 'pie',
-                data: {
-                    labels: data.segments.labels,
-                    datasets: [{
-                        data: data.segments.data,
-                        backgroundColor: [
-                            'rgba(0, 128, 0, 0.8)',  // Dark green for most profitable
-                            'rgba(144, 238, 144, 0.8)',  // Light green for profitable
-                            'rgba(255, 215, 0, 0.8)',  // Gold for moderate
-                            'rgba(255, 99, 71, 0.8)'   // Tomato for trial/new
-                        ],
-                        borderColor: [
-                            'rgb(0, 128, 0)',
-                            'rgb(144, 238, 144)',
-                            'rgb(255, 215, 0)',
-                            'rgb(255, 99, 71)'
-                        ],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                afterLabel: function(context) {
-                                    const index = context.dataIndex;
-                                    return [
-                                        `Revenue: $${data.segments.profitability[index].toLocaleString()}`,
-                                        `Growth: ${data.segments.growth_rate[index]}%`,
-                                        data.segments.descriptions[index]
-                                    ];
+            const customerSegmentsCtx = getChartContext('customerSegmentsChart');
+            if (data.segments && data.segments.labels && customerSegmentsCtx) {
+                new Chart(customerSegmentsCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: data.segments.labels,
+                        datasets: [{
+                            data: data.segments.data,
+                            backgroundColor: [
+                                'rgba(0, 128, 0, 0.8)',  // Dark green for most profitable
+                                'rgba(144, 238, 144, 0.8)',  // Light green for profitable
+                                'rgba(255, 215, 0, 0.8)',  // Gold for moderate
+                                'rgba(255, 99, 71, 0.8)'   // Tomato for trial/new
+                            ],
+                            borderColor: [
+                                'rgb(0, 128, 0)',
+                                'rgb(144, 238, 144)',
+                                'rgb(255, 215, 0)',
+                                'rgb(255, 99, 71)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: function(context) {
+                                        const index = context.dataIndex;
+                                        const profitability = data.segments.profitability && data.segments.profitability.length > index ? 
+                                            data.segments.profitability[index] : 0;
+                                        const growthRate = data.segments.growth_rate && data.segments.growth_rate.length > index ? 
+                                            data.segments.growth_rate[index] : 0;
+                                        const description = data.segments.descriptions && data.segments.descriptions.length > index ? 
+                                            data.segments.descriptions[index] : '';
+                                        
+                                        return [
+                                            `Revenue: $${profitability.toLocaleString()}`,
+                                            `Growth: ${growthRate}%`,
+                                            description
+                                        ];
+                                    }
                                 }
+                            },
+                            legend: {
+                                position: 'right'
                             }
-                        },
-                        legend: {
-                            position: 'right'
                         }
                     }
-                }
-            });
+                });
+            }
 
             // Populate segment details
             const segmentDetails = document.getElementById('segmentDetails');
-            data.segments.labels.forEach((label, index) => {
-                const li = document.createElement('li');
-                li.className = 'p-2 rounded border border-gray-200';
-                const profitClass = index === 0 ? 'text-green-800' : 
-                                  index === 1 ? 'text-green-600' :
-                                  index === 2 ? 'text-yellow-600' : 'text-red-500';
-                li.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <span class="font-medium ${profitClass}">${label}</span>
-                        <span class="font-bold">$${data.segments.profitability[index].toLocaleString()}</span>
-                    </div>
-                    <div class="text-xs text-gray-600 mt-1">
-                        <span class="inline-block mr-4">Growth: ${data.segments.growth_rate[index]}%</span>
-                        <span>Share: ${data.segments.data[index]}%</span>
-                    </div>
-                    <div class="text-xs text-gray-500 mt-1">${data.segments.descriptions[index]}</div>
-                `;
-                segmentDetails.appendChild(li);
-            });
+            if (segmentDetails && data.segments && data.segments.labels) {
+                segmentDetails.innerHTML = ''; // Clear existing content
+                data.segments.labels.forEach((label, index) => {
+                    const profitability = data.segments.profitability && data.segments.profitability.length > index ? 
+                        data.segments.profitability[index] : 0;
+                    const growthRate = data.segments.growth_rate && data.segments.growth_rate.length > index ? 
+                        data.segments.growth_rate[index] : 0;
+                    const description = data.segments.descriptions && data.segments.descriptions.length > index ? 
+                        data.segments.descriptions[index] : '';
+                    const share = data.segments.data && data.segments.data.length > index ? 
+                        data.segments.data[index] : 0;
+                    
+                    const li = document.createElement('li');
+                    li.className = 'p-2 rounded border border-gray-200';
+                    const profitClass = index === 0 ? 'text-green-800' : 
+                                      index === 1 ? 'text-green-600' :
+                                      index === 2 ? 'text-yellow-600' : 'text-red-500';
+                    li.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium ${profitClass}">${label}</span>
+                            <span class="font-bold">$${profitability.toLocaleString()}</span>
+                        </div>
+                        <div class="text-xs text-gray-600 mt-1">
+                            <span class="inline-block mr-4">Growth: ${growthRate}%</span>
+                            <span>Share: ${share}%</span>
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">${description}</div>
+                    `;
+                    segmentDetails.appendChild(li);
+                });
+            }
 
-            new Chart(document.getElementById('revenueTrendsChart').getContext('2d'), {
-                type: 'line',
-                data: {
-                    labels: data.revenue.labels,
-                    datasets: [{
-                        label: 'Revenue',
-                        data: data.revenue.data,
-                        borderColor: chartConfig.colors.primary,
-                        backgroundColor: chartConfig.colors.tertiary,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false
-                }
-            });
+            const revenueTrendsCtx = getChartContext('revenueTrendsChart');
+            if (data.revenue && data.revenue.labels && revenueTrendsCtx) {
+                new Chart(revenueTrendsCtx, {
+                    type: 'line',
+                    data: {
+                        labels: data.revenue.labels,
+                        datasets: [{
+                            label: 'Revenue',
+                            data: data.revenue.data,
+                            borderColor: chartConfig.colors.primary,
+                            backgroundColor: chartConfig.colors.tertiary,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
 
-            new Chart(document.getElementById('channelClvChart').getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: data.channels.labels,
-                    datasets: [{
-                        label: 'CLV by Channel',
-                        data: data.channels.data,
-                        backgroundColor: [
-                            'rgba(59, 130, 246, 0.8)',   // Blue for Direct
-                            'rgba(16, 185, 129, 0.8)',   // Green for Referral
-                            'rgba(245, 158, 11, 0.8)',   // Orange for Social
-                            'rgba(139, 92, 246, 0.8)'    // Purple for Email
-                        ],
-                        borderColor: [
-                            'rgb(59, 130, 246)',
-                            'rgb(16, 185, 129)',
-                            'rgb(245, 158, 11)',
-                            'rgb(139, 92, 246)'
-                        ],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
+            const channelClvCtx = getChartContext('channelClvChart');
+            if (data.channels && data.channels.labels && channelClvCtx) {
+                new Chart(channelClvCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.channels.labels,
+                        datasets: [{
+                            label: 'CLV by Channel',
+                            data: data.channels.data,
+                            backgroundColor: [
+                                'rgba(59, 130, 246, 0.8)',   // Blue for Direct
+                                'rgba(16, 185, 129, 0.8)',   // Green for Referral
+                                'rgba(245, 158, 11, 0.8)',   // Orange for Social
+                                'rgba(139, 92, 246, 0.8)'    // Purple for Email
+                            ],
+                            borderColor: [
+                                'rgb(59, 130, 246)',
+                                'rgb(16, 185, 129)',
+                                'rgb(245, 158, 11)',
+                                'rgb(139, 92, 246)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `CLV: $${context.raw.toLocaleString()}`;
+                                    }
+                                }
+                            }
                         },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `CLV: $${context.raw.toLocaleString()}`;
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Customer Lifetime Value ($)'
                                 }
                             }
                         }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Customer Lifetime Value ($)'
-                            }
-                        }
                     }
-                }
-            });
+                });
+            }
 
-            new Chart(document.getElementById('retentionChart').getContext('2d'), {
-                type: 'line',
-                data: {
-                    labels: data.retention.labels,
-                    datasets: [{
-                        label: 'Retention Rate',
-                        data: data.retention.data,
-                        borderColor: chartConfig.colors.primary,
-                        backgroundColor: chartConfig.colors.tertiary,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false
-                }
-            });
+            const retentionCtx = getChartContext('retentionChart');
+            if (data.retention && data.retention.labels && retentionCtx) {
+                new Chart(retentionCtx, {
+                    type: 'line',
+                    data: {
+                        labels: data.retention.labels,
+                        datasets: [{
+                            label: 'Retention Rate',
+                            data: data.retention.data,
+                            borderColor: chartConfig.colors.primary,
+                            backgroundColor: chartConfig.colors.tertiary,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
 
             // Churn Risk Factors Chart
-            if (data.churn_factors) {
-                new Chart(document.getElementById('churnFactorsChart').getContext('2d'), {
+            const churnFactorsCtx = getChartContext('churnFactorsChart');
+            if (data.churn_factors && data.churn_factors.labels && churnFactorsCtx) {
+                new Chart(churnFactorsCtx, {
                     type: 'bar',
                     data: {
                         labels: data.churn_factors.labels,
@@ -585,7 +637,9 @@
                             tooltip: {
                                 callbacks: {
                                     afterLabel: function(context) {
-                                        return data.churn_factors.descriptions[context.dataIndex];
+                                        const index = context.dataIndex;
+                                        const descriptions = data.churn_factors.descriptions || [];
+                                        return descriptions.length > index ? descriptions[index] : '';
                                     }
                                 }
                             }
@@ -595,18 +649,25 @@
 
                 // Populate factor details
                 const detailsList = document.getElementById('churnFactorDetails');
-                data.churn_factors.labels.forEach((label, index) => {
-                    const li = document.createElement('li');
-                    li.className = 'flex flex-col';
-                    li.innerHTML = `
-                        <div class="flex justify-between items-center">
-                            <span class="font-medium">${label}</span>
-                            <span class="font-bold">${data.churn_factors.data[index].toFixed(1)}%</span>
-                        </div>
-                        <span class="text-xs text-gray-600">${data.churn_factors.descriptions[index]}</span>
-                    `;
-                    detailsList.appendChild(li);
-                });
+                if (detailsList && data.churn_factors.labels) {
+                    detailsList.innerHTML = ''; // Clear existing content
+                    data.churn_factors.labels.forEach((label, index) => {
+                        const value = data.churn_factors.data.length > index ? data.churn_factors.data[index] : 0;
+                        const description = data.churn_factors.descriptions && data.churn_factors.descriptions.length > index ? 
+                            data.churn_factors.descriptions[index] : '';
+                            
+                        const li = document.createElement('li');
+                        li.className = 'flex flex-col';
+                        li.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">${label}</span>
+                                <span class="font-bold">${value.toFixed(1)}%</span>
+                            </div>
+                            <span class="text-xs text-gray-600">${description}</span>
+                        `;
+                        detailsList.appendChild(li);
+                    });
+                }
             }
         });
     </script>

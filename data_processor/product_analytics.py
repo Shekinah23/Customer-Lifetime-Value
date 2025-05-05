@@ -241,6 +241,8 @@ def analyze_product_lifecycle(product_code, conn=None):
             SELECT 
                 COUNT(*) as total_accounts,
                 SUM(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 ELSE 0 END) as active_accounts,
+                SUM(CASE WHEN ACNTS_INOP_ACNT = 1 AND ACNTS_DORMANT_ACNT = 0 THEN 1 ELSE 0 END) as inactive_accounts,
+                SUM(CASE WHEN ACNTS_DORMANT_ACNT = 1 THEN 1 ELSE 0 END) as dormant_accounts,
                 AVG(JULIANDAY('now') - JULIANDAY(ACNTS_OPENING_DATE)) as avg_age_days
             FROM clients 
             WHERE ACNTS_PROD_CODE = ?
@@ -248,51 +250,120 @@ def analyze_product_lifecycle(product_code, conn=None):
         
         metrics = cursor.fetchone()
         
-        if not metrics or not metrics[0]:
-            result = [
-                {'name': 'Introduction', 'current': True},
-                {'name': 'Growth', 'current': False},
-                {'name': 'Maturity', 'current': False},
-                {'name': 'Decline', 'current': False}
-            ]
-        else:
-            total_accounts, active_accounts, avg_age_days = metrics
-            activity_ratio = active_accounts / total_accounts if total_accounts > 0 else 0
-            
-            # Determine lifecycle stage
-            if avg_age_days < 90:  # Less than 3 months
-                current_stage = 'Introduction'
-            elif activity_ratio > 0.8 and avg_age_days < 365:  # High activity, less than 1 year
-                current_stage = 'Growth'
-            elif activity_ratio > 0.6:  # Moderate to high activity
-                current_stage = 'Maturity'
-            else:  # Low activity
-                current_stage = 'Decline'
-                
-            # Create result with all stages and current marker
-            stages = ['Introduction', 'Growth', 'Maturity', 'Decline']
-            result = [{'name': stage, 'current': stage == current_stage} for stage in stages]
+        # Calculate closed accounts (dormant for over a year)
+        one_year_ago = datetime.now() - timedelta(days=365)
+        one_year_ago_str = one_year_ago.strftime('%Y-%m-%d')
         
-        # Cache the result
+        cursor.execute("""
+            SELECT COUNT(*) as closed_accounts
+            FROM clients 
+            WHERE ACNTS_PROD_CODE = ?
+            AND ACNTS_DORMANT_ACNT = 1
+            AND ACNTS_LAST_TRAN_DATE < ?
+        """, (product_code, one_year_ago_str))
+        
+        closed_metrics = cursor.fetchone()
+        
+        # Calculate lifecycle stage based on account statuses
+        total_accounts = metrics['total_accounts'] or 0
+        active_accounts = metrics['active_accounts'] or 0
+        inactive_accounts = metrics['inactive_accounts'] or 0
+        dormant_accounts = metrics['dormant_accounts'] or 0
+        closed_accounts = closed_metrics['closed_accounts'] or 0
+        avg_age_days = metrics['avg_age_days'] or 0
+        
+        # Calculate percentages
+        if total_accounts > 0:
+            active_pct = (active_accounts / total_accounts) * 100
+            inactive_pct = (inactive_accounts / total_accounts) * 100
+            dormant_pct = (dormant_accounts / total_accounts) * 100
+            closed_pct = (closed_accounts / total_accounts) * 100
+        else:
+            active_pct = inactive_pct = dormant_pct = closed_pct = 0
+        
+        # Determine lifecycle stage based on account status distribution and age
+        # Introduction: High active ratio, low age
+        # Growth: High active ratio, medium age, low dormant
+        # Maturity: Balanced active/inactive, higher age
+        # Decline: High dormant/closed ratio
+        
+        lifecycle_stages = [
+            {
+                'name': 'Introduction',
+                'description': 'New product with high growth potential',
+                'current': avg_age_days < 180 and active_pct > 70,
+                'metrics': {
+                    'active_pct': active_pct,
+                    'inactive_pct': inactive_pct,
+                    'dormant_pct': dormant_pct,
+                    'closed_pct': closed_pct,
+                    'avg_age_months': avg_age_days / 30
+                }
+            },
+            {
+                'name': 'Growth',
+                'description': 'Rapidly growing product with increasing adoption',
+                'current': avg_age_days >= 180 and avg_age_days < 540 and active_pct > 60,
+                'metrics': {
+                    'active_pct': active_pct,
+                    'inactive_pct': inactive_pct,
+                    'dormant_pct': dormant_pct,
+                    'closed_pct': closed_pct,
+                    'avg_age_months': avg_age_days / 30
+                }
+            },
+            {
+                'name': 'Maturity',
+                'description': 'Stable product with balanced customer base',
+                'current': avg_age_days >= 540 and active_pct >= 40 and dormant_pct < 30,
+                'metrics': {
+                    'active_pct': active_pct,
+                    'inactive_pct': inactive_pct,
+                    'dormant_pct': dormant_pct,
+                    'closed_pct': closed_pct,
+                    'avg_age_months': avg_age_days / 30
+                }
+            },
+            {
+                'name': 'Decline',
+                'description': 'Product showing signs of decline with increasing dormancy',
+                'current': dormant_pct >= 30 or closed_pct >= 10 or active_pct < 40,
+                'metrics': {
+                    'active_pct': active_pct,
+                    'inactive_pct': inactive_pct,
+                    'dormant_pct': dormant_pct,
+                    'closed_pct': closed_pct,
+                    'avg_age_months': avg_age_days / 30
+                }
+            }
+        ]
+        
+        # Default to maturity if no other stage is matched
+        if not any(stage['current'] for stage in lifecycle_stages):
+            for stage in lifecycle_stages:
+                if stage['name'] == 'Maturity':
+                    stage['current'] = True
+                    break
+                    
+        # Store in cache
         cursor.execute("""
             INSERT OR REPLACE INTO performance_metrics 
             (metric_key, metric_value, last_updated)
             VALUES (?, ?, CURRENT_TIMESTAMP)
-        """, (f'lifecycle_{product_code}', json.dumps(result)))
+        """, (f'lifecycle_{product_code}', json.dumps(lifecycle_stages)))
         conn.commit()
         
         if should_close_conn:
             conn.close()
-        
-        return result
+            
+        return lifecycle_stages
         
     except Exception as e:
         print(f"Error analyzing product lifecycle: {str(e)}")
+        if conn and should_close_conn:
+            conn.close()
         return [
-            {'name': 'Introduction', 'current': True},
-            {'name': 'Growth', 'current': False},
-            {'name': 'Maturity', 'current': False},
-            {'name': 'Decline', 'current': False}
+            {'name': 'Unknown', 'description': 'Error analyzing lifecycle', 'current': True}
         ]
 
 def get_bundling_recommendations() -> List[Dict[str, Any]]:

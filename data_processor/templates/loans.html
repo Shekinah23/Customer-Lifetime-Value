@@ -287,7 +287,88 @@
                 <div id="insightsContent" class="section-content hidden flex-1">
                     <div class="bg-white rounded-lg shadow p-6 h-full">
                         <h3 class="text-lg font-semibold mb-4">Loan Insights and Analysis</h3>
-                        <p class="text-gray-600">Insights content will be added here</p>
+                        <div id="insightsLoading" class="flex items-center justify-center p-12">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-navy-blue"></div>
+                        </div>
+                        <div id="insightsContainer" class="hidden">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <!-- Loan Portfolio Health -->
+                                <div class="border rounded-lg p-4">
+                                    <h4 class="text-lg font-semibold mb-3 text-navy-blue">Loan Portfolio Health</h4>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <div class="flex justify-between mb-1">
+                                                <span class="text-sm font-medium">Default Risk</span>
+                                                <span class="text-sm font-semibold text-gray-700" id="insightDefaultRisk">Loading...</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                                <div class="bg-red-600 h-2.5 rounded-full" id="insightDefaultRiskBar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between mb-1">
+                                                <span class="text-sm font-medium">Prepayment Risk</span>
+                                                <span class="text-sm font-semibold text-gray-700" id="insightPrepaymentRisk">Loading...</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                                <div class="bg-yellow-500 h-2.5 rounded-full" id="insightPrepaymentRiskBar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between mb-1">
+                                                <span class="text-sm font-medium">Delinquency Rate</span>
+                                                <span class="text-sm font-semibold text-gray-700" id="insightDelinquencyRate">Loading...</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                                <div class="bg-orange-500 h-2.5 rounded-full" id="insightDelinquencyRateBar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Profitability Insights -->
+                                <div class="border rounded-lg p-4">
+                                    <h4 class="text-lg font-semibold mb-3 text-navy-blue">Profitability Insights</h4>
+                                    <div class="space-y-4">
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-sm font-medium">Total Interest Paid</span>
+                                            <span class="text-sm font-semibold text-green-600" id="insightInterestPaid">Loading...</span>
+                                        </div>
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-sm font-medium">Expected Interest</span>
+                                            <span class="text-sm font-semibold text-blue-600" id="insightExpectedInterest">Loading...</span>
+                                        </div>
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-sm font-medium">CLV Contribution</span>
+                                            <span class="text-sm font-semibold text-purple-600" id="insightCLVContribution">Loading...</span>
+                                        </div>
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-sm font-medium">Loan Profitability</span>
+                                            <span class="text-sm font-semibold text-green-600" id="insightLoanProfitability">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Strategic Recommendations -->
+                            <div class="border rounded-lg p-4 mb-6">
+                                <h4 class="text-lg font-semibold mb-3 text-navy-blue">Strategic Recommendations</h4>
+                                <div class="space-y-4" id="insightRecommendations">
+                                    <div class="p-3 bg-blue-50 border-l-4 border-blue-500 text-sm text-gray-700">
+                                        <div class="font-semibold text-blue-700">Cross-Selling Opportunity</div>
+                                        <p>Explore cross-selling additional products to high-performing loan clients. Cross-sell score: <span id="insightCrossSellScore">Loading...</span>/10</p>
+                                    </div>
+                                    <div class="p-3 bg-green-50 border-l-4 border-green-500 text-sm text-gray-700">
+                                        <div class="font-semibold text-green-700">Portfolio Growth</div>
+                                        <p>Average time to maturity: <span id="insightTimeRemaining">Loading...</span>. Consider targeted campaigns to refinance loans with at least 12 months remaining.</p>
+                                    </div>
+                                    <div class="p-3 bg-yellow-50 border-l-4 border-yellow-500 text-sm text-gray-700">
+                                        <div class="font-semibold text-yellow-700">Risk Mitigation</div>
+                                        <p>Implement preemptive outreach for loans showing early warning signs of delinquency to reduce overall portfolio risk.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -417,12 +498,12 @@
                                 <tr>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.acc_num || loan.account_number || ""}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.loan_type || ""}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(loan.original_amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(loan.outstanding_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.currency || 'USD'} ${(loan.original_amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.currency || 'USD'} ${(loan.outstanding_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(loan.interest_rate || 0).toFixed(2)}%</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.start_date || ""}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.maturity_date || ""}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(loan.monthly_payment || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${loan.currency || 'USD'} ${(loan.monthly_payment || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                                             loan.status === 'Current' ? 'bg-green-100 text-green-800' :
@@ -545,15 +626,15 @@
                 const primaryCurrency = currencies[0] || 'USD';
 
                 // Update Interest Metrics with currency
-                document.getElementById('totalInterestPaid').textContent = `$${(metrics.total_interest_paid || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-                document.getElementById('expectedInterest').textContent = `$${(metrics.expected_interest || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('totalInterestPaid').textContent = `${primaryCurrency} ${(metrics.total_interest_paid || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('expectedInterest').textContent = `${primaryCurrency} ${(metrics.expected_interest || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
 
                 // Update Risk Metrics
                 document.getElementById('prepaymentRisk').textContent = `${(metrics.prepayment_risk_score || 0).toFixed(1)}%`;
                 document.getElementById('defaultRisk').textContent = `${(metrics.default_risk_score || 0).toFixed(1)}%`;
 
                 // Update Profitability Metrics with currency
-                document.getElementById('loanProfitability').textContent = `$${(metrics.loan_profitability || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('loanProfitability').textContent = `${primaryCurrency} ${(metrics.loan_profitability || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
                 document.getElementById('clvContribution').textContent = `${(metrics.clv_contribution || 0).toFixed(1)}%`;
 
                 // Update Performance Metrics
@@ -571,6 +652,62 @@
                 document.querySelectorAll('[id$="Risk"], [id$="Score"], [id$="Rate"]').forEach(el => {
                     el.textContent = 'Error loading data';
                 });
+            }
+        }
+        
+        // Load loan insights from API
+        async function loadLoanInsights() {
+            const loadingIndicator = document.getElementById('insightsLoading');
+            const insightsContainer = document.getElementById('insightsContainer');
+            
+            try {
+                // Show loading state
+                loadingIndicator.classList.remove('hidden');
+                insightsContainer.classList.add('hidden');
+                
+                // Fetch data from API
+                const response = await fetch('/api/loan-metrics');
+                if (!response.ok) throw new Error('Failed to load loan insights');
+                const metrics = await response.json();
+                
+                // Get primary currency
+                const currencies = metrics.currencies ? metrics.currencies.split(',') : ['USD'];
+                const primaryCurrency = currencies[0] || 'USD';
+                
+                // Update Portfolio Health metrics
+                document.getElementById('insightDefaultRisk').textContent = `${(metrics.default_risk_score || 0).toFixed(1)}%`;
+                document.getElementById('insightDefaultRiskBar').style.width = `${Math.min(100, metrics.default_risk_score || 0)}%`;
+                
+                document.getElementById('insightPrepaymentRisk').textContent = `${(metrics.prepayment_risk_score || 0).toFixed(1)}%`;
+                document.getElementById('insightPrepaymentRiskBar').style.width = `${Math.min(100, metrics.prepayment_risk_score || 0)}%`;
+                
+                document.getElementById('insightDelinquencyRate').textContent = `${(metrics.delinquency_rate || 0).toFixed(2)}%`;
+                document.getElementById('insightDelinquencyRateBar').style.width = `${Math.min(100, metrics.delinquency_rate * 5 || 0)}%`;
+                
+                // Update Profitability Insights
+                document.getElementById('insightInterestPaid').textContent = `${primaryCurrency} ${(metrics.total_interest_paid || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('insightExpectedInterest').textContent = `${primaryCurrency} ${(metrics.expected_interest || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('insightCLVContribution').textContent = `${(metrics.clv_contribution || 0).toFixed(1)}%`;
+                document.getElementById('insightLoanProfitability').textContent = `${primaryCurrency} ${(metrics.loan_profitability || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                
+                // Update Strategic Recommendations
+                document.getElementById('insightCrossSellScore').textContent = (metrics.cross_sell_score || 0).toFixed(1);
+                document.getElementById('insightTimeRemaining').textContent = `${metrics.avg_time_remaining || 0} months`;
+                
+                // Show insights container
+                insightsContainer.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading loan insights:', error);
+                // Show error message
+                insightsContainer.innerHTML = `
+                    <div class="text-red-600 text-center p-4">
+                        <p class="font-semibold">Error loading loan insights</p>
+                        <p class="text-sm">Please try again later or contact support if the problem persists.</p>
+                    </div>
+                `;
+                insightsContainer.classList.remove('hidden');
+            } finally {
+                loadingIndicator.classList.add('hidden');
             }
         }
 
@@ -595,6 +732,11 @@
             // Load metrics if metrics section is shown
             if (sectionName === 'metrics') {
                 loadLoanMetrics();
+            }
+            
+            // Load insights if insights section is shown
+            if (sectionName === 'insights') {
+                loadLoanInsights();
             }
         }
 
@@ -647,9 +789,9 @@
                                 ${data.payments.map(payment => `
                                     <tr>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${payment.date}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${payment.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${payment.principal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${payment.interest.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${payment.currency} ${payment.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${payment.currency} ${payment.principal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${payment.currency} ${payment.interest.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                         <td class="px-6 py-4 whitespace-nowrap">
                                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                                                 payment.status === 'Completed' ? 'bg-green-100 text-green-800' :

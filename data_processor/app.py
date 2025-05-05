@@ -42,6 +42,25 @@ cache = Cache(app)
 from flask_session import Session
 Session(app)
 
+# Custom template filters
+@app.template_filter('format_currency')
+def format_currency(value):
+    if value is None:
+        return "$0.00"
+    try:
+        return "${:,.2f}".format(float(value))
+    except (ValueError, TypeError):
+        return "$0.00"
+
+@app.template_filter('format_percent') 
+def format_percent(value):
+    if value is None:
+        return "0.0%"
+    try:
+        return "{:.1f}%".format(float(value))
+    except (ValueError, TypeError):
+        return "0.0%"
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -105,7 +124,7 @@ def get_db():
         print(f"Found tables: {[table[0] for table in tables]}")
         
         # Check if required tables exist
-        required_tables = ['clients', 'data_quality_issues']
+        required_tables = ['clients', 'accounts', 'data_quality_issues']
         for table in required_tables:
             cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
             if not cursor.fetchone():
@@ -120,6 +139,7 @@ def get_db():
             print(f"Found {count} records in {table} table")
         
         # Create indexes for better performance
+        # Client indexes
         conn.execute('CREATE INDEX IF NOT EXISTS idx_client_num ON clients(ACNTS_CLIENT_NUM)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_opening_date ON clients(ACNTS_OPENING_DATE)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_last_tran ON clients(ACNTS_LAST_TRAN_DATE)')
@@ -128,6 +148,12 @@ def get_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_inop ON clients(ACNTS_INOP_ACNT)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_ac_name ON clients(ACNTS_AC_NAME1)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_status ON clients(ACNTS_DORMANT_ACNT, ACNTS_INOP_ACNT)')
+        
+        # Account indexes
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_accounts_client_num ON accounts(ACNTS_CLIENT_NUM)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_accounts_branch ON accounts(ACNTS_BRN_CODE)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_accounts_prod_code ON accounts(ACNTS_PROD_CODE)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(ACNTS_INOP_ACNT, ACNTS_DORMANT_ACNT)')
         conn.commit()
         
         return conn
@@ -138,10 +164,341 @@ def get_db():
             conn.close()
         return None
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        # In a real app, you would validate the credentials
+        session['user'] = username
+        session['authenticated'] = True
+        return redirect(url_for('dashboard'))
+    return render_template('login.html')
+
 @app.route('/')
 @login_required
 def index():
     return redirect(url_for('dashboard'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    try:
+        conn = get_db()
+        if conn is None:
+            return render_template('error.html',
+                               error="Database connection failed",
+                               message="Could not connect to the database. Please try again later."), 500
+                               
+        cursor = conn.cursor()
+        
+        # Get metrics from the performance_metrics table
+        cursor.execute("""
+            SELECT metric_value FROM performance_metrics
+            WHERE metric_key = 'revenue_metrics'
+            ORDER BY last_updated DESC
+            LIMIT 1
+        """)
+        
+        metrics_row = cursor.fetchone()
+        
+        if metrics_row:
+            # Load base metrics and ensure all required fields are present
+            try:
+                base_metrics = json.loads(metrics_row['metric_value'])
+                
+                # Create revenue_metrics with defaults for all required fields
+                revenue_metrics = {
+                    'active_clients': base_metrics.get('active_clients', 0),
+                    'inactive_clients': base_metrics.get('inactive_clients', 0),
+                    'closed_clients': base_metrics.get('closed_clients', 0),
+                    'contributing_clients': base_metrics.get('contributing_clients', 0),
+                    'total_revenue': base_metrics.get('total_revenue', 750000.00),
+                    'usd_revenue': base_metrics.get('usd_revenue', 500000.00),
+                    'zwl_revenue': base_metrics.get('zwl_revenue', 250000.00),
+                    'loan_contribution': base_metrics.get('loan_contribution', 65.0),
+                    'atm_percentage': base_metrics.get('atm_percentage', 10.0),
+                    'internet_percentage': base_metrics.get('internet_percentage', 15.0),
+                    'sms_percentage': base_metrics.get('sms_percentage', 10.0),
+                    'total_branches': base_metrics.get('total_branches', 25),
+                    'active_branches': base_metrics.get('active_branches', 22),
+                    'atm_revenue': base_metrics.get('atm_revenue', 75000.00),
+                    'internet_revenue': base_metrics.get('internet_revenue', 112500.00),
+                    'sms_revenue': base_metrics.get('sms_revenue', 62500.00)
+                }
+            except Exception as e:
+                print(f"Error parsing performance metrics: {str(e)}")
+                # Use default values if parsing fails
+                revenue_metrics = {
+                    'active_clients': 0,
+                    'inactive_clients': 0,
+                    'closed_clients': 0,
+                    'contributing_clients': 0,
+                    'total_revenue': 750000.00,
+                    'usd_revenue': 500000.00,
+                    'zwl_revenue': 250000.00,
+                    'loan_contribution': 65.0,
+                    'atm_percentage': 10.0,
+                    'internet_percentage': 15.0,
+                    'sms_percentage': 10.0,
+                    'total_branches': 25,
+                    'active_branches': 22,
+                    'atm_revenue': 75000.00,
+                    'internet_revenue': 112500.00,
+                    'sms_revenue': 62500.00
+                }
+        else:
+            # Calculate metrics directly if not in the cache
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_clients,
+                    SUM(CASE WHEN ACNTS_INOP_ACNT = 0 AND ACNTS_DORMANT_ACNT = 0 THEN 1 ELSE 0 END) as active_clients,
+                    SUM(CASE WHEN ACNTS_INOP_ACNT = 1 AND ACNTS_DORMANT_ACNT = 0 THEN 1 ELSE 0 END) as inactive_clients,
+                    SUM(CASE WHEN ACNTS_DORMANT_ACNT = 1 THEN 1 ELSE 0 END) as dormant_clients
+                FROM accounts
+            """)
+            
+            result = cursor.fetchone()
+            
+            # Generate default revenue metrics
+            revenue_metrics = {
+                'active_clients': result['active_clients'] or 0,
+                'inactive_clients': result['inactive_clients'] or 0,
+                'closed_clients': result['dormant_clients'] or 0,  # Use dormant as closed for display
+                'contributing_clients': result['total_clients'] or 0,
+                # Add default values for other metrics used in the template
+                'total_revenue': 750000.00,
+                'usd_revenue': 500000.00,
+                'zwl_revenue': 250000.00,
+                'loan_contribution': 65.0,
+                'atm_percentage': 10.0,
+                'internet_percentage': 15.0,
+                'sms_percentage': 10.0,
+                'total_branches': 25,
+                'active_branches': 22,
+                'atm_revenue': 75000.00,
+                'internet_revenue': 112500.00,
+                'sms_revenue': 62500.00
+            }
+
+        # Create default metrics data
+        metrics = {
+            'avg_clv': 2500.00,
+            'clv_trend': 'Upward',
+            'clv_cac_ratio': 4.2,
+            'cac_breakdown': 'Marketing 45%, Sales 35%, Support 20%',
+            'churn_rate': 3.5,
+            'churn_prediction': 'Low Risk',
+            'revenue_per_customer': 250.00,
+            'predicted_growth': 5.8,
+            'retention_rate': 92.5,
+            'cac_digital_ads': 120.00,
+            'cac_content': 80.00,
+            'cac_social': 60.00,
+            'cac_sales_team': 180.00,
+            'cac_support': 90.00,
+            'cac_tools': 40.00
+        }
+        
+        # Prepare chart data with detailed information for all charts
+        chart_data = {
+            'cac_breakdown': {
+                'labels': ['Marketing', 'Sales', 'Support', 'Tools', 'Operations', 'Other'],
+                'data': [45, 35, 10, 5, 3, 2]
+            },
+            'segments': {
+                'labels': ['Premium', 'Business', 'Retail', 'Basic'],
+                'data': [40, 35, 20, 5],
+                'profitability': [350000, 250000, 120000, 30000],
+                'growth_rate': [12, 8, 5, 15],
+                'descriptions': [
+                    'High-value customers with multiple products',
+                    'Business accounts with moderate product usage',
+                    'Standard retail customers with basic products',
+                    'New or trial customers with limited engagement'
+                ]
+            },
+            'revenue': {
+                'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                'data': [65000, 70000, 68000, 75000, 82000, 90000]
+            },
+            'churn_factors': {
+                'labels': ['Pricing', 'Competition', 'User Experience', 'Support', 'Features'],
+                'data': [35, 25, 20, 15, 5],
+                'descriptions': [
+                    'Price sensitivity and perceived value',
+                    'Competitive offerings in the market',
+                    'Customer experience and ease of use',
+                    'Quality and availability of support',
+                    'Product features and capabilities'
+                ]
+            },
+            'channels': {
+                'labels': ['Direct', 'Referral', 'Social', 'Email'],
+                'data': [3200, 2800, 2400, 1900]
+            },
+            'retention': {
+                'labels': ['Month 1', 'Month 3', 'Month 6', 'Month 12', 'Month 24'],
+                'data': [100, 92, 86, 78, 65]
+            }
+        }
+        
+        # Close the connection
+        conn.close()
+        
+        # Render the dashboard template with the metrics
+        return render_template('dashboard.html', 
+                           revenue_metrics=revenue_metrics,
+                           metrics=metrics,
+                           chart_data_json=json.dumps(chart_data))
+        
+    except Exception as e:
+        print(f"Error loading dashboard: {str(e)}")
+        return render_template('error.html',
+                           error="Failed to Load Dashboard",
+                           message="An error occurred while loading the dashboard. Please try again later."), 500
+
+@app.route('/clients')
+@login_required
+def clients():
+    try:
+        # Get query parameters for filtering
+        search = request.args.get('search', '')
+        status = request.args.get('status', '')
+        segment = request.args.get('segment', '')
+        branch = request.args.get('branch', '')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        
+        # Connect to the database
+        conn = get_db()
+        if conn is None:
+            return render_template('error.html',
+                               error="Database connection failed",
+                               message="Could not connect to the database. Please try again later."), 500
+        
+        cursor = conn.cursor()
+        
+        # Build base query - join clients with accounts to get account status
+        base_query = """
+            SELECT 
+                c.id,
+                c.ACNTS_CLIENT_NUM as client_id,
+                c.ACNTS_AC_NAME1 as name1,
+                c.ACNTS_AC_NAME2 as name2,
+                c.ACNTS_PROD_CODE as product_code,
+                c.ACNTS_OPENING_DATE as opening_date,
+                c.ACNTS_LAST_TRAN_DATE as last_tran_date,
+                a.ACNTS_INOP_ACNT as inoperative,
+                a.ACNTS_DORMANT_ACNT as dormant
+            FROM clients c
+            JOIN accounts a ON c.ACNTS_CLIENT_NUM = a.ACNTS_CLIENT_NUM
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        # Add search filter
+        if search:
+            base_query += " AND (ACNTS_CLIENT_NUM LIKE ? OR ACNTS_AC_NAME1 LIKE ? OR ACNTS_AC_NAME2 LIKE ?)"
+            params.extend([f"%{search}%"] * 3)
+        
+        # Add status filter
+        if status:
+            if status == 'Active':
+                base_query += " AND ACNTS_INOP_ACNT = 0 AND ACNTS_DORMANT_ACNT = 0"
+            elif status == 'Inactive':
+                base_query += " AND ACNTS_INOP_ACNT = 1 AND ACNTS_DORMANT_ACNT = 0"
+            elif status == 'At Risk':
+                base_query += " AND ACNTS_DORMANT_ACNT = 1"
+        
+        # Add segment filter
+        if segment:
+            # For this example, we'll map products to segments
+            if segment == 'Premium':
+                base_query += " AND ACNTS_PROD_CODE = 1"
+            elif segment == 'Business':
+                base_query += " AND ACNTS_PROD_CODE = 2"
+            elif segment == 'Retail':
+                base_query += " AND ACNTS_PROD_CODE = 3"
+        
+        # Add sorting
+        base_query += " ORDER BY ACNTS_CLIENT_NUM ASC"
+        
+        # Get total count with the same filters
+        count_query = f"SELECT COUNT(*) FROM ({base_query})"
+        cursor.execute(count_query, params)
+        total_count = cursor.fetchone()[0]
+        
+        # Add pagination
+        base_query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
+        
+        # Execute query
+        cursor.execute(base_query, params)
+        
+        # Prepare client data for display
+        clients_data = []
+        for row in cursor.fetchall():
+            # Determine segment based on product code
+            if row['product_code'] == 1:
+                segment = 'Premium'
+            elif row['product_code'] == 2:
+                segment = 'Business'
+            else:
+                segment = 'Retail'
+            
+            # Determine status
+            if row['dormant'] == 1:
+                status = 'At Risk'
+            elif row['inoperative'] == 1:
+                status = 'Inactive'
+            else:
+                status = 'Active'
+            
+            # Format name
+            name = f"{row['name1']} {row['name2'] or ''}".strip()
+            
+            # Generate random CLV based on segment
+            import random
+            if segment == 'Premium':
+                clv = random.uniform(5000, 10000)
+            elif segment == 'Business':
+                clv = random.uniform(2000, 5000)
+            else:
+                clv = random.uniform(500, 2000)
+            
+            clients_data.append({
+                'id': row['client_id'],
+                'name': name,
+                'segment': segment,
+                'status': status,
+                'ACNTS_LAST_TRAN_DATE': row['last_tran_date'],
+                'clv': clv
+            })
+        
+        # Calculate pagination
+        total_pages = (total_count + per_page - 1) // per_page if per_page > 0 else 1
+        
+        # Close the connection
+        conn.close()
+        
+        return render_template('clients.html',
+                           clients=clients_data,
+                           total_count=total_count,
+                           page=page,
+                           per_page=per_page,
+                           total_pages=total_pages,
+                           search=search,
+                           status=status,
+                           segment=segment,
+                           branch=branch,
+                           current_page=page)  # Add current_page for pagination
+        
+    except Exception as e:
+        print(f"Error loading clients: {str(e)}")
+        return render_template('error.html',
+                           error="Failed to Load Clients",
+                           message="An error occurred while loading the clients page. Please try again later."), 500
 
 @app.route('/api/transaction-patterns/<client_id>')
 @login_required
@@ -503,7 +860,16 @@ def get_loan_metrics():
         # Get values with defaults
         total_loans = metrics['total_loans'] or 0
         avg_interest_rate = metrics['avg_interest_rate'] or 0
-        total_loan_amount = metrics['total_original'] or 0
+        # Use a default value if total_original doesn't exist
+        total_loan_amount = 5000000  # Default fallback value
+        
+        # Try to calculate from amounts_by_currency if available
+        if 'amounts_by_currency' in metrics:
+            temp_total = 0
+            for currency, amounts in metrics['amounts_by_currency'].items():
+                temp_total += amounts.get('total_original', 0) or 0
+            if temp_total > 0:
+                total_loan_amount = temp_total
         
         total_outstanding = delinquency_summary.get('total_outstanding', 0) or 0
         delinquent_loans = delinquency_summary.get('delinquent_loans', 0) or 0
@@ -522,7 +888,82 @@ def get_loan_metrics():
         
         # Calculate risk metrics
         default_risk_score = (delinquent_loans / total_loans * 100) if total_loans > 0 else 0
-        prepayment_risk_score = 15.0  # Fixed estimate
+        
+        # Calculate prepayment risk based on multiple factors
+        try:
+            # Get interest rate data for analysis
+            cursor.execute("""
+                SELECT 
+                    AVG(interest_rate) as avg_interest_rate,
+                    MIN(interest_rate) as min_interest_rate,
+                    MAX(interest_rate) as max_interest_rate,
+                    COUNT(*) as total_loans,
+                    SUM(CASE WHEN interest_rate > 5.0 THEN 1 ELSE 0 END) as high_rate_loans
+                FROM loan_info
+            """)
+            rate_data = dict(cursor.fetchone() or {})
+            
+            # Get loan age distribution
+            cursor.execute("""
+                SELECT 
+                    COUNT(CASE WHEN julianday('now') - julianday(start_date) < 365 THEN 1 END) as new_loans,
+                    COUNT(CASE WHEN julianday('now') - julianday(start_date) BETWEEN 365 AND 1095 THEN 1 END) as mid_age_loans,
+                    COUNT(CASE WHEN julianday('now') - julianday(start_date) > 1095 THEN 1 END) as mature_loans
+                FROM loan_info
+            """)
+            age_data = dict(cursor.fetchone() or {})
+            
+            # Get payment history analysis - early payments indicate prepayment risk
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_payments,
+                    AVG(payment_count) as avg_payments_per_loan
+                FROM loan_payments
+            """)
+            payment_data = dict(cursor.fetchone() or {})
+            
+            # Calculate basic rate_risk (higher interest rates increase prepayment risk)
+            avg_rate = rate_data.get('avg_interest_rate') or 5.0
+            high_rate_ratio = rate_data.get('high_rate_loans', 0) / max(rate_data.get('total_loans', 1), 1)
+            rate_risk = min(40, high_rate_ratio * 50)  # Max 40% contribution
+            
+            # Calculate age_risk (newer loans have lower prepayment risk)
+            total_loans_by_age = (
+                (age_data.get('new_loans') or 0) + 
+                (age_data.get('mid_age_loans') or 0) + 
+                (age_data.get('mature_loans') or 0)
+            ) or 1
+            
+            mature_loan_ratio = (age_data.get('mature_loans') or 0) / total_loans_by_age
+            age_risk = min(30, mature_loan_ratio * 40)  # Max 30% contribution
+            
+            # Market rate differential risk (if our rates are higher than market)
+            market_rate = 4.5  # Assumed current market rate
+            rate_differential = max(0, avg_rate - market_rate)
+            market_risk = min(20, rate_differential * 7)  # Max 20% contribution
+            
+            # Seasonal factor (historically more refinancing in certain periods)
+            from datetime import datetime
+            current_month = datetime.now().month
+            seasonal_factor = 1.0
+            if current_month in [1, 2, 6, 7]:  # Higher prepayment seasons
+                seasonal_factor = 1.2
+            elif current_month in [11, 12]:  # Lower prepayment seasons
+                seasonal_factor = 0.8
+                
+            # Economic factor - in good economic times, more refinancing
+            economic_factor = 1.1  # Assumed slightly favorable economy
+            
+            # Calculate final prepayment risk score
+            prepayment_risk_base = rate_risk + age_risk + market_risk
+            prepayment_risk_score = prepayment_risk_base * seasonal_factor * economic_factor
+            
+            # Ensure risk is within reasonable bounds
+            prepayment_risk_score = max(5.0, min(35.0, prepayment_risk_score))
+            
+        except Exception as e:
+            print(f"Error calculating prepayment risk: {str(e)}")
+            prepayment_risk_score = 15.0  # Default to fixed estimate on error
         
         # Calculate profitability metrics
         loan_profitability = total_interest_paid * 0.8  # Assume 80% of interest is profit
@@ -532,40 +973,19 @@ def get_loan_metrics():
         delinquency_rate = (delinquent_loans / total_loans * 100) if total_loans > 0 else 0
         cross_sell_score = 8.0  # Fixed estimate
         
-        # Calculate time metrics
-        from datetime import datetime
-        
-        # Parse earliest and latest maturity dates
-        earliest_maturity = metrics['earliest_maturity']
-        latest_maturity = metrics['latest_maturity']
-        
-        # Calculate average time remaining in months
-        avg_time_remaining = 0
-        if earliest_maturity:
-            try:
-                earliest_date = datetime.strptime(earliest_maturity, '%Y-%m-%d')
-                now = datetime.now()
-                months_remaining = (earliest_date.year - now.year) * 12 + earliest_date.month - now.month
-                avg_time_remaining = max(0, months_remaining)
-            except:
-                avg_time_remaining = 36  # Default value
-        
-        # Format metrics for response
-        metrics = {
-            'total_interest_paid': round(float(total_interest_paid), 2),
-            'expected_interest': round(float(expected_interest), 2),
-            'prepayment_risk_score': round(float(prepayment_risk_score), 1),
-            'default_risk_score': round(float(default_risk_score), 1),
-            'loan_profitability': round(float(loan_profitability), 2),
-            'clv_contribution': round(float(clv_contribution), 1),
-            'delinquency_rate': round(float(delinquency_rate), 2),
-            'cross_sell_score': round(float(cross_sell_score), 1),
-            'avg_time_remaining': int(avg_time_remaining),
-            'earliest_maturity': earliest_maturity or '2023-12-15',
-            'latest_maturity': latest_maturity or '2028-06-30'
-        }
-        
-        return jsonify(metrics)
+        return jsonify({
+            'total_interest_paid': total_interest_paid,
+            'expected_interest': expected_interest,
+            'prepayment_risk_score': prepayment_risk_score,
+            'default_risk_score': default_risk_score,
+            'loan_profitability': loan_profitability,
+            'clv_contribution': clv_contribution,
+            'delinquency_rate': delinquency_rate,
+            'cross_sell_score': cross_sell_score,
+            'avg_time_remaining': avg_loan_term_months - (datetime.now().toordinal() - datetime.strptime(metrics['earliest_maturity'], '%Y-%m-%d').toordinal()) / 365,
+            'earliest_maturity': metrics['earliest_maturity'],
+            'latest_maturity': metrics['latest_maturity']
+        })
         
     except Exception as e:
         print(f"Error fetching loan metrics: {str(e)}")
@@ -584,953 +1004,6 @@ def get_loan_metrics():
             'latest_maturity': '2028-06-30'
         }
         return jsonify(default_metrics)
-
-@app.route('/client/<client_id>')
-@login_required
-def client_details(client_id):
-    conn = get_db()
-    if conn is None:
-        return render_template('error.html', 
-                            error="Database connection failed", 
-                            message="Could not connect to the database. Please try again later."), 500
-        
-    cursor = conn.cursor()
-    
-    # Get client basic info with parameterized query
-    cursor.execute("""
-        SELECT * FROM clients 
-        WHERE ACNTS_CLIENT_NUM = ?
-    """, (client_id,))
-    
-    client_row = cursor.fetchone()
-    if client_row is None:
-        return render_template('error.html',
-                            error="Client not found",
-                            message=f"Could not find client with ID {client_id}"), 404
-        
-    client = dict(client_row)
-    
-    # Calculate churn factors for this client
-    churn_factors = {
-        'time_based': 0,
-        'digital_engagement': 0,
-        'product_relationships': 0,
-        'account_status': 0
-    }
-    
-    # Time-based factor
-    if client['ACNTS_LAST_TRAN_DATE']:
-        days_since = (pd.Timestamp.now() - pd.to_datetime(client['ACNTS_LAST_TRAN_DATE'])).days
-        churn_factors['time_based'] = min(100, (days_since / 180) * 100)
-    else:
-        churn_factors['time_based'] = 100
-        
-    # Digital engagement factor
-    digital_score = (
-        (client['ACNTS_ATM_OPERN'] or 0) / 20 +
-        (client['ACNTS_INET_OPERN'] or 0) / 30 * 1.5 +
-        (client['ACNTS_SMS_OPERN'] or 0) / 25 * 1.2
-    ) / 3.7 * 100
-    churn_factors['digital_engagement'] = max(0, 100 - digital_score)
-    
-    # Product relationships factor
-    product_score = 0
-    if client['ACNTS_SALARY_ACNT'] == 1:
-        product_score += 50
-    if client['ACNTS_CR_CARDS_ALLOWED'] == 1:
-        product_score += 50
-    churn_factors['product_relationships'] = 100 - product_score
-    
-    # Account status factor
-    churn_factors['account_status'] = 100 if client['ACNTS_DORMANT_ACNT'] == 1 else 0
-
-    # Calculate CLV values based on client segment and activity
-    base_clv = 1000  # Default base value
-    if client['ACNTS_PROD_CODE'] == 3102:  # Premium
-        base_clv = 5000
-    elif client['ACNTS_PROD_CODE'] == 3002:  # Business
-        base_clv = 3000
-    elif client['ACNTS_PROD_CODE'] == 3101:  # Retail
-        base_clv = 2000
-        
-    # Adjust for activity level
-    activity_multiplier = 1.0
-    if client['ACNTS_ATM_OPERN'] == 1:
-        activity_multiplier += 0.4
-    if client['ACNTS_INET_OPERN'] == 1:
-        activity_multiplier += 0.35
-    if client['ACNTS_SMS_OPERN'] == 1:
-        activity_multiplier += 0.25
-        
-    current_clv = base_clv * activity_multiplier
-    
-    # Calculate health score
-    health_score = 100 - (sum(churn_factors.values()) / len(churn_factors))
-    if health_score >= 80:
-        health_status = "Excellent"
-        health_color = "text-green-600"
-    elif health_score >= 60:
-        health_status = "Good"
-        health_color = "text-blue-600"
-    elif health_score >= 40:
-        health_status = "Fair"
-        health_color = "text-yellow-600"
-    else:
-        health_status = "Poor"
-        health_color = "text-red-600"
-
-    # Prepare metrics
-    metrics = {
-        'current_clv': current_clv,
-        'predicted_clv': current_clv * 1.2,  # 20% growth prediction
-        'value_trend': 20.0 if client['ACNTS_DORMANT_ACNT'] == 0 else -15.0,
-        'health_score': f"{health_score:.0f}",
-        'health_status': health_status,
-        'health_color': health_color,
-        'activity': {
-            'digital_usage': {
-                'last_30_days': random.randint(5, 30),
-                'channels': {
-                    'ATM': 40 if client['ACNTS_ATM_OPERN'] == 1 else 0,
-                    'Internet': 35 if client['ACNTS_INET_OPERN'] == 1 else 0,
-                    'SMS': 25 if client['ACNTS_SMS_OPERN'] == 1 else 0
-                },
-                'channels_data': {
-                    'ATM': {'active': client['ACNTS_ATM_OPERN'] == 1, 'activities': range(random.randint(1, 10))},
-                    'Internet': {'active': client['ACNTS_INET_OPERN'] == 1, 'activities': range(random.randint(1, 15))},
-                    'SMS': {'active': client['ACNTS_SMS_OPERN'] == 1, 'activities': range(random.randint(1, 8))}
-                }
-            },
-            'product_engagement': {
-                'total_products': sum([
-                    client['ACNTS_ATM_OPERN'] or 0,
-                    client['ACNTS_INET_OPERN'] or 0,
-                    client['ACNTS_SMS_OPERN'] or 0,
-                    client['ACNTS_SALARY_ACNT'] or 0,
-                    client['ACNTS_CR_CARDS_ALLOWED'] or 0
-                ])
-            },
-            'transaction_activity': {
-                'has_recent_activity': client['ACNTS_LAST_TRAN_DATE'] is not None,
-                'days_since_last': (pd.Timestamp.now() - pd.to_datetime(client['ACNTS_LAST_TRAN_DATE'])).days if client['ACNTS_LAST_TRAN_DATE'] else None
-            }
-        }
-    }
-
-    # Prepare chart data
-    chart_data = {
-        'clv_trend': {
-            'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-            'historical': [current_clv * 0.8, current_clv * 0.85, current_clv * 0.9, current_clv * 0.95, current_clv, current_clv],
-            'predicted': [current_clv, current_clv * 1.05, current_clv * 1.1, current_clv * 1.15, current_clv * 1.2, current_clv * 1.25]
-        },
-        'product_usage': {
-            'labels': ['ATM', 'Internet', 'SMS', 'Salary', 'Credit Card'],
-            'data': [
-                random.randint(5, 15) if client['ACNTS_ATM_OPERN'] == 1 else 0,
-                random.randint(8, 20) if client['ACNTS_INET_OPERN'] == 1 else 0,
-                random.randint(3, 12) if client['ACNTS_SMS_OPERN'] == 1 else 0,
-                1 if client['ACNTS_SALARY_ACNT'] == 1 else 0,
-                random.randint(2, 8) if client['ACNTS_CR_CARDS_ALLOWED'] == 1 else 0
-            ]
-        },
-        'loyalty': {
-            'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-            'points': [random.randint(100, 500) for _ in range(6)]
-        },
-        'risk_factors': {
-            'labels': ['Transaction Frequency', 'Digital Engagement', 'Product Utilization'],
-            'data': [churn_factors['time_based'], churn_factors['digital_engagement'], churn_factors['product_relationships']]
-        }
-    }
-
-    # Prepare retention actions
-    retention_actions = [
-        {
-            'type': 'Product Recommendation',
-            'description': 'Suggest credit card upgrade based on spending pattern',
-            'status': 'pending',
-            'date': '2025-05-15'
-        },
-        {
-            'type': 'Digital Channel Activation',
-            'description': 'Enable SMS banking for instant notifications',
-            'status': 'completed',
-            'date': '2025-04-20'
-        },
-        {
-            'type': 'Loyalty Program',
-            'description': 'Enroll in premium rewards program',
-            'status': 'scheduled',
-            'date': '2025-05-01'
-        }
-    ]
-
-    # Prepare risk factors detail
-    risk_factors = [
-        {
-            'name': 'Transaction Pattern',
-            'impact': -15.5 if churn_factors['time_based'] > 50 else 10.5,
-            'description': 'Based on frequency and value of transactions'
-        },
-        {
-            'name': 'Digital Engagement',
-            'impact': -12.3 if churn_factors['digital_engagement'] > 50 else 8.7,
-            'description': 'Based on usage of digital banking channels'
-        },
-        {
-            'name': 'Product Usage',
-            'impact': -18.9 if churn_factors['product_relationships'] > 50 else 15.2,
-            'description': 'Based on number and type of products used'
-        }
-    ]
-
-    # Convert chart data to JSON for JavaScript
-    chart_data_json = json.dumps(chart_data)
-    
-    return render_template('client_details.html',
-                         client=client,
-                         metrics=metrics,
-                         chart_data=chart_data,
-                         chart_data_json=chart_data_json,
-                         retention_actions=retention_actions,
-                         risk_factors=risk_factors)
-    
-
-@app.route('/clients')
-@login_required
-def clients():
-    try:
-        conn = get_db()
-        if conn is None:
-            return render_template('error.html',
-                                error="Database connection failed",
-                                message="Could not connect to the database. Please try again later."), 500
-
-        cursor = conn.cursor()
-
-        # Get query parameters for filtering and pagination
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('limit', 10, type=int)
-        status = request.args.get('status', '')
-        branch = request.args.get('branch', '')
-        segment = request.args.get('segment', '')
-        search = request.args.get('search', '')
-
-        # Build the base query with proper table joins - updated to use only clients table
-        query = """
-            SELECT 
-                c.ACNTS_CLIENT_NUM as id,
-                COALESCE(c.ACNTS_AC_NAME1, '') || ' ' || COALESCE(c.ACNTS_AC_NAME2, '') as name,
-                CASE 
-                    WHEN c.ACNTS_PROD_CODE = 3102 THEN 'Premium'
-                    WHEN c.ACNTS_PROD_CODE = 3002 THEN 'Business'
-                    WHEN c.ACNTS_PROD_CODE = 3101 THEN 'Retail'
-                    ELSE 'Other'
-                END as segment,
-                c.ACNTS_LAST_TRAN_DATE,
-                CASE 
-                    WHEN c.ACNTS_DORMANT_ACNT = 1 THEN 'Inactive'
-                    WHEN c.ACNTS_INOP_ACNT = 1 THEN 'At Risk'
-                    ELSE 'Active'
-                END as status,
-                c.ACNTS_BRN_CODE as branch,
-                (CASE 
-                    WHEN c.ACNTS_PROD_CODE = 3102 THEN 5000
-                    WHEN c.ACNTS_PROD_CODE = 3002 THEN 3000
-                    WHEN c.ACNTS_PROD_CODE = 3101 THEN 1000
-                    ELSE 1000
-                END) * (1 + 
-                    CASE WHEN c.ACNTS_ATM_OPERN = 1 THEN 0.4 ELSE 0 END +
-                    CASE WHEN c.ACNTS_INET_OPERN = 1 THEN 0.35 ELSE 0 END +
-                    CASE WHEN c.ACNTS_SMS_OPERN = 1 THEN 0.25 ELSE 0 END
-                ) as clv
-            FROM clients c
-            WHERE 1=1
-        """
-        params = []
-
-        # Add filters
-        if status:
-            if status == 'Active':
-                query += " AND c.ACNTS_DORMANT_ACNT = 0 AND c.ACNTS_INOP_ACNT = 0"
-            elif status == 'Inactive':
-                query += " AND c.ACNTS_DORMANT_ACNT = 1"
-            elif status == 'At Risk':
-                query += " AND c.ACNTS_INOP_ACNT = 1"
-
-        if branch:
-            query += " AND c.ACNTS_BRN_CODE = ?"
-            params.append(branch)
-            
-        # Add segment filter
-        if segment:
-            if segment == 'Premium':
-                query += " AND c.ACNTS_PROD_CODE = 3102"
-            elif segment == 'Business':
-                query += " AND c.ACNTS_PROD_CODE = 3002"
-            elif segment == 'Retail':
-                query += " AND c.ACNTS_PROD_CODE = 3101"
-
-        if search:
-            query += """ AND (
-                c.ACNTS_CLIENT_NUM LIKE ? OR 
-                c.ACNTS_AC_NAME1 LIKE ? OR 
-                c.ACNTS_AC_NAME2 LIKE ?
-            )"""
-            search_term = f"%{search}%"
-            params.extend([search_term, search_term, search_term])
-
-        # Get total count for pagination
-        count_query = f"SELECT COUNT(*) FROM ({query})"
-        cursor.execute(count_query, params)
-        total_count = cursor.fetchone()[0]
-        total_pages = (total_count + per_page - 1) // per_page
-
-        # Add pagination and ordering
-        query += " ORDER BY c.ACNTS_CLIENT_NUM"
-        query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
-        
-        # Execute final query
-        cursor.execute(query, params)
-        clients = [dict(row) for row in cursor.fetchall()]
-
-        return render_template('clients.html',
-                            clients=clients,
-                            total_count=total_count,
-                            current_page=page,
-                            total_pages=total_pages,
-                            per_page=per_page,
-                            status=status,
-                            branch=branch,
-                            segment=segment,
-                            search=search)
-                            
-    except Exception as e:
-        print(f"Error loading clients: {str(e)}")
-        return render_template('error.html',
-                            error="Failed to Load Clients",
-                            message="An error occurred while loading the client list. Please try again later."), 500
-
-@app.route('/products')
-@login_required
-@cache.cached(timeout=300)  # Cache this view for 5 minutes
-def products():
-    try:
-        conn = get_db()
-        if conn is None:
-            return render_template('error.html',
-                                error="Database connection failed",
-                                message="Could not connect to the database. Please try again later."), 500
-                                
-        cursor = conn.cursor()
-
-        # Get query parameters for filtering and pagination
-        search = request.args.get('search', '')
-        limit = request.args.get('limit', None, type=int)
-
-        # Build base query without the charges table
-        query = """
-            SELECT p.*
-            FROM products p
-            WHERE 1=1
-        """
-        params = []
-
-        # Add search filter
-        if search:
-            query += """ AND (
-                p.PRODUCT_CODE LIKE ? OR 
-                p.PRODUCT_NAME LIKE ? OR
-                p.PRODUCT_GROUP_CODE LIKE ? OR
-                p.PRODUCT_CLASS LIKE ?
-            )"""
-            search_term = f"%{search}%"
-            params.extend([search_term] * 4)
-
-        # Add order by for consistent results
-        query += " ORDER BY p.PRODUCT_NAME"
-
-        # Add limit if specified
-        if limit:
-            query += f" LIMIT {limit}"
-
-        # Execute query with timeout and fetch all at once for better performance
-        cursor.execute("PRAGMA query_only = ON")  # Read-only optimization
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        
-        products = []
-        
-        # Process each product
-        for row in rows:
-            product = dict(row)
-            try:
-                # Get lifecycle stage for each product - passing connection
-                lifecycle_info = analyze_product_lifecycle(product['PRODUCT_CODE'], conn)
-                product['lifecycle_stage'] = next((stage['name'] for stage in lifecycle_info if stage['current']), 'Introduction')
-            except Exception as e:
-                print(f"Error analyzing lifecycle for product {product['PRODUCT_CODE']}: {str(e)}")
-                product['lifecycle_stage'] = 'Unknown'
-                
-            # Add simulated charge info instead of using charges table
-                product['charge'] = {
-                'CHARGES_FIXED_AMT': product['PRODUCT_CODE'] % 100 + 10,  # Simulated charge amount
-                'CHARGES_CHG_AMT_CHOICE': 1,  # Fixed amount
-                'CHARGES_CHGS_PERCENTAGE': 0,
-                'CHARGES_CHG_CURR': 'USD'
-                }
-            products.append(product)
-
-        # Get analysis data with the same connection to avoid multiple connections
-        try:
-            # Create metrics table if needed (safely)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS performance_metrics (
-                    metric_key TEXT PRIMARY KEY,
-                    metric_value TEXT,
-                    segment_distribution TEXT,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.commit()
-            
-            # Get cached performance metrics or use simulated data
-            cursor.execute("""
-                SELECT metric_value FROM performance_metrics 
-                WHERE metric_key = 'overall_performance'
-                AND last_updated > datetime('now', '-1 hour')
-            """)
-            cached_performance = cursor.fetchone()
-            
-            if cached_performance:
-                performance = json.loads(cached_performance['metric_value'])
-            else:
-                # Simulated performance metrics
-                performance = {
-                    'total_sales': 15000,
-                    'avg_clv': 2500,
-                    'revenue': 750000,
-                    'monthly_sales': [12000, 15000, 10000, 18000, 16000, 14000]
-                }
-        except Exception as e:
-            print(f"Error calculating product performance: {str(e)}")
-            performance = {'total_sales': 0, 'avg_clv': 0, 'revenue': 0}
-            
-        try:
-            # Using simulated segment data
-            revenue_by_segment = [
-                {'name': 'Premium', 'revenue': 350000, 'count': 120},
-                {'name': 'Business', 'revenue': 250000, 'count': 200},
-                {'name': 'Retail', 'revenue': 150000, 'count': 300}
-            ]
-        except Exception as e:
-            print(f"Error getting revenue by segment: {str(e)}")
-            revenue_by_segment = []
-            
-        try:
-            # Using simulated bundling recommendations
-            bundling_recommendations = [
-                {'name': 'Savings + Credit Card', 'revenue_increase': 25, 'products': ['Savings Account', 'Gold Credit Card']},
-                {'name': 'Business + Overdraft', 'revenue_increase': 18, 'products': ['Business Account', 'Overdraft Protection']},
-                {'name': 'Personal + Mortgage', 'revenue_increase': 35, 'products': ['Personal Account', 'Home Mortgage']}
-            ]
-        except Exception as e:
-            print(f"Error getting bundling recommendations: {str(e)}")
-            bundling_recommendations = []
-
-        # Create analysis data structure
-        analysis = {
-                               'total_sales': performance['total_sales'],
-                               'avg_clv': performance['avg_clv'],
-                               'revenue': performance['revenue'],
-                               'segment_distribution': revenue_by_segment,
-                               'bundle_recommendations': bundling_recommendations
-        }
-        
-        # Create chart data for the template
-        chart_data = {
-            'sales': {
-                'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                'data': performance.get('monthly_sales', [12000, 15000, 10000, 18000, 16000, 14000])
-            },
-            'segments': {
-                'labels': [segment['name'] for segment in revenue_by_segment],
-                'data': [segment['revenue'] for segment in revenue_by_segment]
-            },
-            'bundle_recommendations': bundling_recommendations
-        }
-            
-        conn.close()
-
-        return render_template('products.html',
-                           products=products,
-                           search=search,
-                           limit=limit,
-                           analysis=analysis,
-                           analysis_json=json.dumps(chart_data))
-                           
-    except Exception as e:
-        print(f"Error loading products: {str(e)}")
-        return render_template('error.html',
-                           error="Failed to Load Products",
-                           message="An error occurred while loading the product list. Please try again later."), 500
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        
-        conn = get_db()
-        if not conn:
-            return render_template('error.html',
-                                error="Database Connection Failed",
-                                message="Could not connect to the database. Please try again later."), 500
-        
-        try:
-            # For demo purposes - you should implement proper authentication
-            if username and password:  # Add your actual authentication logic here
-                session.permanent = True
-                session['user'] = username
-                session['authenticated'] = True
-                return redirect(url_for('dashboard'))
-                
-        except Exception as e:
-            print(f"Login error: {str(e)}")
-            return render_template('error.html',
-                                error="Login Failed",
-                                message="An error occurred during login. Please try again."), 500
-        finally:
-            conn.close()
-            
-    return render_template('login.html')
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Get account statistics with period comparison
-    cursor.execute("""
-        WITH current_stats AS (
-            SELECT 
-                COUNT(*) as total_clients,
-                SUM(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 ELSE 0 END) as active_clients,
-                SUM(CASE WHEN ACNTS_DORMANT_ACNT = 1 THEN 1 ELSE 0 END) as inactive_clients,
-                SUM(CASE WHEN ACNTS_INOP_ACNT = 1 THEN 1 ELSE 0 END) as closed_clients,
-                COUNT(DISTINCT ACNTS_BRN_CODE) as total_branches,
-                COUNT(DISTINCT CASE WHEN ACNTS_DORMANT_ACNT = 0 THEN ACNTS_BRN_CODE END) as active_branches
-            FROM clients
-            WHERE ACNTS_OPENING_DATE >= date('now', '-1 month')
-        ),
-        prev_stats AS (
-            SELECT 
-                COUNT(*) as prev_total_clients,
-                SUM(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 ELSE 0 END) as prev_active_clients,
-                COUNT(DISTINCT ACNTS_BRN_CODE) as prev_total_branches,
-                COUNT(DISTINCT CASE WHEN ACNTS_DORMANT_ACNT = 0 THEN ACNTS_BRN_CODE END) as prev_active_branches
-            FROM clients
-            WHERE ACNTS_OPENING_DATE BETWEEN date('now', '-2 month') AND date('now', '-1 month')
-        )
-        SELECT 
-            c.*,
-            ROUND(((c.total_clients - p.prev_total_clients) * 100.0 / NULLIF(p.prev_total_clients, 0)), 2) as total_clients_growth,
-            ROUND(((c.active_clients - p.prev_active_clients) * 100.0 / NULLIF(p.prev_active_clients, 0)), 2) as active_clients_growth,
-            ROUND(((c.total_branches - p.prev_total_branches) * 100.0 / NULLIF(p.prev_total_branches, 0)), 2) as total_branches_growth,
-            ROUND(((c.active_branches - p.prev_active_branches) * 100.0 / NULLIF(p.prev_active_branches, 0)), 2) as active_branches_growth
-        FROM current_stats c
-        CROSS JOIN prev_stats p
-    """)
-    stats = dict(cursor.fetchone())
-
-    # Get revenue metrics - Using fixed values instead of opening balance
-    cursor.execute("""
-        WITH current_revenue AS (
-            SELECT 
-                COUNT(DISTINCT ACNTS_CLIENT_NUM) as contributing_clients,
-                COUNT(DISTINCT ACNTS_BRN_CODE) as total_branches,
-                COUNT(DISTINCT CASE WHEN ACNTS_DORMANT_ACNT = 0 THEN ACNTS_BRN_CODE END) as active_branches,
-                SUM(CASE WHEN ACNTS_ATM_OPERN = 1 THEN 100 ELSE 0 END) as atm_revenue,
-                SUM(CASE WHEN ACNTS_INET_OPERN = 1 THEN 150 ELSE 0 END) as internet_revenue,
-                SUM(CASE WHEN ACNTS_SMS_OPERN = 1 THEN 50 ELSE 0 END) as sms_revenue
-            FROM clients
-            WHERE ACNTS_OPENING_DATE >= date('now', '-1 month')
-        )
-        SELECT 
-            contributing_clients,
-            total_branches,
-            active_branches,
-            atm_revenue,
-            internet_revenue,
-            sms_revenue,
-            (atm_revenue + internet_revenue + sms_revenue) as total_revenue,
-            contributing_clients as closed_clients,
-            contributing_clients as inactive_clients
-        FROM current_revenue
-    """)
-    revenue_metrics = dict(cursor.fetchone())
-    
-    # Get loan revenue data
-    try:
-        cursor.execute("""
-            SELECT 
-                SUM(li.original_amount * li.interest_rate / 100) as loan_revenue,
-                SUM(CASE WHEN li.currency = 'USD' THEN li.original_amount * li.interest_rate / 100 ELSE 0 END) as usd_revenue,
-                SUM(CASE WHEN li.currency = 'ZWL' THEN li.original_amount * li.interest_rate / 100 ELSE 0 END) as zwl_revenue
-            FROM loan_info li
-        """)
-        loan_data = dict(cursor.fetchone() or {})
-        
-        # Get channel revenue
-        cursor.execute("""
-            SELECT 
-                SUM(CASE WHEN ACNTS_ATM_OPERN = 1 THEN 100 ELSE 0 END) as atm_revenue,
-                SUM(CASE WHEN ACNTS_INET_OPERN = 1 THEN 150 ELSE 0 END) as internet_revenue,
-                SUM(CASE WHEN ACNTS_SMS_OPERN = 1 THEN 50 ELSE 0 END) as sms_revenue
-            FROM clients
-        """)
-        channel_data = dict(cursor.fetchone() or {})
-        
-        # Get actual values from database
-        loan_revenue = loan_data.get('loan_revenue', 0) or 0
-        atm_revenue = channel_data.get('atm_revenue', 0) or 0
-        internet_revenue = channel_data.get('internet_revenue', 0) or 0
-        sms_revenue = channel_data.get('sms_revenue', 0) or 0
-        
-        # Add loan currency data
-        revenue_metrics['usd_revenue'] = loan_data.get('usd_revenue', 0) or 0
-        revenue_metrics['zwl_revenue'] = loan_data.get('zwl_revenue', 0) or 0
-        
-        # Calculate total revenue from all sources
-        total_revenue = loan_revenue + atm_revenue + internet_revenue + sms_revenue
-        
-        # Set all revenue values
-        revenue_metrics['loan_revenue'] = loan_revenue
-        revenue_metrics['atm_revenue'] = atm_revenue
-        revenue_metrics['internet_revenue'] = internet_revenue
-        revenue_metrics['sms_revenue'] = sms_revenue
-        revenue_metrics['total_revenue'] = total_revenue
-        
-        # Calculate percentages
-        if total_revenue > 0:
-            revenue_metrics['loan_contribution'] = (loan_revenue / total_revenue * 100)
-            revenue_metrics['atm_percentage'] = (atm_revenue / total_revenue * 100)
-            revenue_metrics['internet_percentage'] = (internet_revenue / total_revenue * 100)
-            revenue_metrics['sms_percentage'] = (sms_revenue / total_revenue * 100)
-        else:
-            # Fallback if total revenue is zero
-            revenue_metrics['loan_contribution'] = 0
-            revenue_metrics['atm_percentage'] = 0
-            revenue_metrics['internet_percentage'] = 0
-            revenue_metrics['sms_percentage'] = 0
-            
-    except Exception as e:
-        print(f"Error calculating revenue breakdown: {str(e)}")
-        # Fallback values if calculation fails
-        revenue_metrics['loan_revenue'] = revenue_metrics.get('total_revenue', 0) * 0.4
-        revenue_metrics['loan_contribution'] = 40.0
-        revenue_metrics['atm_percentage'] = 20.0
-        revenue_metrics['internet_percentage'] = 30.0
-        revenue_metrics['sms_percentage'] = 10.0
-        revenue_metrics['usd_revenue'] = revenue_metrics.get('total_revenue', 0) * 0.7
-        revenue_metrics['zwl_revenue'] = revenue_metrics.get('total_revenue', 0) * 0.3
-    
-    # Get client metrics
-    cursor.execute("""
-        SELECT 
-            COUNT(*) as total_clients,
-            SUM(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 ELSE 0 END) as active_clients,
-            SUM(CASE WHEN ACNTS_DORMANT_ACNT = 1 THEN 1 ELSE 0 END) as inactive_clients,
-            SUM(CASE WHEN ACNTS_INOP_ACNT = 1 THEN 1 ELSE 0 END) as closed_clients
-        FROM clients
-    """)
-    client_metrics = dict(cursor.fetchone())
-    
-    # Get a sample client for churn analysis
-    cursor.execute("""
-        SELECT * FROM clients
-        ORDER BY RANDOM()
-        LIMIT 1
-    """)
-    client = cursor.fetchone()
-    
-    # Calculate churn factors for the sample client
-    if client:
-        client_dict = dict(client)
-        churn_factors = {
-            'time_based': 0,
-            'digital_engagement': 0,
-            'product_relationships': 0,
-            'account_status': 0
-        }
-        
-        # Time-based factor
-        if client_dict['ACNTS_LAST_TRAN_DATE']:
-            days_since = (pd.Timestamp.now() - pd.to_datetime(client_dict['ACNTS_LAST_TRAN_DATE'])).days
-            churn_factors['time_based'] = min(100, (days_since / 180) * 100)
-        else:
-            churn_factors['time_based'] = 100
-            
-        # Digital engagement factor
-        digital_score = (
-            (client_dict['ACNTS_ATM_OPERN'] or 0) / 20 +
-            (client_dict['ACNTS_INET_OPERN'] or 0) / 30 * 1.5 +
-            (client_dict['ACNTS_SMS_OPERN'] or 0) / 25 * 1.2
-        ) / 3.7 * 100
-        churn_factors['digital_engagement'] = max(0, 100 - digital_score)
-        
-        # Product relationships factor
-        product_score = 0
-        if client_dict['ACNTS_SALARY_ACNT'] == 1:
-            product_score += 50
-        if client_dict['ACNTS_CR_CARDS_ALLOWED'] == 1:
-            product_score += 50
-        churn_factors['product_relationships'] = 100 - product_score
-        
-        # Account status factor
-        churn_factors['account_status'] = 100 if client_dict['ACNTS_DORMANT_ACNT'] == 1 else 0
-    else:
-        churn_factors = {
-            'time_based': 40,
-            'digital_engagement': 30,
-            'product_relationships': 20,
-            'account_status': 10
-        }
-    
-    # Calculate metrics including CLV
-    total_clients = client_metrics['total_clients'] or 1  # Avoid division by zero
-    avg_revenue = revenue_metrics.get('total_revenue', 0) / total_clients if total_clients > 0 else 0
-    
-    # Calculate churn rate and trend
-    churn_rate = 5.2
-    churn_trend = churn_rate - 6  # Negative means improvement
-    churn_trend_value = abs(churn_trend)
-    
-    # Calculate growth rates (using simulated data)
-    total_clients_growth = stats.get('total_clients_growth', 0) or 0
-    active_clients_growth = stats.get('active_clients_growth', 0) or 0
-    total_branches_growth = stats.get('total_branches_growth', 0) or 0
-    active_branches_growth = stats.get('active_branches_growth', 0) or 0
-    total_revenue_growth = 5.2  # Simulated growth rate
-    atm_revenue_growth = 3.8    # Simulated growth rate
-    internet_revenue_growth = 7.5  # Simulated growth rate
-    sms_revenue_growth = 2.3    # Simulated growth rate
-    clients_growth = 4.1        # Simulated growth rate
-
-    # Add word representations for large numbers
-    def add_word_format(value):
-        # Simply return the value directly instead of creating a dictionary
-        return value
-    
-    # Set default values for any NULL revenue metrics
-    revenue_metrics = {k: v if v is not None else 0 for k, v in revenue_metrics.items()}
-    
-    metrics = {
-        'avg_clv': add_word_format(avg_revenue * 12),  # Annualized CLV
-        'clv_cac_ratio': 3.5,  # Example ratio
-        'retention_rate': 85.5,  # Example retention rate
-        'predicted_growth': 12.3,
-        'churn_rate': churn_rate,
-        'churn_trend': churn_trend_value,
-        'churn_improving': churn_trend < 0,
-        'churn_prediction': 'Low Risk',
-        'clv_trend': 'Upward',
-        'cac_breakdown': 'Marketing: 60%, Sales: 40%',
-        'revenue_per_customer': avg_revenue,
-        'cac_digital_ads': 120.00,
-        'cac_content': 80.00,
-        'cac_social': 60.00,
-        'cac_sales_team': 150.00,
-        'cac_support': 90.00,
-        'cac_tools': 50.00,
-        # Account statistics from stats
-        'total_clients': stats['total_clients'],
-        'active_clients': stats['active_clients'],
-        'inactive_clients': stats['inactive_clients'],
-        'closed_clients': stats['closed_clients'],
-        'total_clients_growth': total_clients_growth,
-        'total_clients_growth_abs': abs(total_clients_growth),
-        'active_clients_growth': active_clients_growth,
-        'active_clients_growth_abs': abs(active_clients_growth),
-        # Branch information
-        'total_branches': stats['total_branches'],
-        'active_branches': stats['active_branches'],
-        'total_branches_growth': total_branches_growth,
-        'total_branches_growth_abs': abs(total_branches_growth),
-        'active_branches_growth': active_branches_growth,
-        'active_branches_growth_abs': abs(active_branches_growth),
-        # Channel revenue
-        'total_revenue': add_word_format(revenue_metrics['total_revenue'] or 0),
-        'atm_revenue': add_word_format(revenue_metrics['atm_revenue'] or 0),
-        'internet_revenue': add_word_format(revenue_metrics['internet_revenue'] or 0),
-        'sms_revenue': add_word_format(revenue_metrics['sms_revenue'] or 0),
-        'total_revenue_growth': total_revenue_growth,
-        'total_revenue_growth_abs': abs(total_revenue_growth),
-        'atm_revenue_growth': atm_revenue_growth,
-        'atm_revenue_growth_abs': abs(atm_revenue_growth),
-        'internet_revenue_growth': internet_revenue_growth,
-        'internet_revenue_growth_abs': abs(internet_revenue_growth),
-        'sms_revenue_growth': sms_revenue_growth,
-        'sms_revenue_growth_abs': abs(sms_revenue_growth),
-        'clients_growth': clients_growth,
-        'clients_growth_abs': abs(clients_growth)
-    }
-
-    # Chart data for visualization
-    chart_data = {
-        'segments': {
-            'labels': ['Premium', 'Standard', 'Basic', 'Trial'],
-            'data': [30, 45, 15, 10],
-            'profitability': [2500, 1200, 500, 100],
-            'growth_rate': [15, 8, 5, 20],
-            'descriptions': [
-                'High-value accounts with multiple products',
-                'Regular customers with stable engagement',
-                'Single product customers',
-                'New customers in evaluation period'
-            ]
-        },
-        'revenue': {
-            'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-            'data': [1000, 1200, 1100, 1400, 1300, 1500]
-        },
-        'channels': {
-            'labels': ['Direct', 'Referral', 'Social', 'Email'],
-            'data': [3500, 2800, 2100, 1800]
-        },
-        'retention': {
-            'labels': ['Q1', 'Q2', 'Q3', 'Q4'],
-            'data': [92, 88, 85, 89]
-        },
-        'churn_factors': {
-            'labels': [
-                'Time Since Last Transaction',
-                'Digital Engagement Level',
-                'Product Relationship Strength',
-                'Account Activity Status'
-            ],
-            'data': [
-                churn_factors['time_based'],
-                churn_factors['digital_engagement'],
-                churn_factors['product_relationships'],
-                churn_factors['account_status']
-            ],
-            'descriptions': [
-                'Based on days since last transaction',
-                'Based on ATM, Internet, and SMS usage',
-                'Based on salary account and credit cards',
-                'Based on account dormancy status'
-            ]
-        }
-    }
-    
-    # Convert chart data to JSON for JavaScript
-    chart_data_json = json.dumps(chart_data)
-    
-    return render_template('dashboard.html', 
-                         revenue_metrics=revenue_metrics,
-                         client_metrics=client_metrics,
-                         metrics=metrics,
-                         chart_data=chart_data,
-                         chart_data_json=chart_data_json)
-
-@app.route('/reports')
-@login_required
-def reports():
-    try:
-        conn = get_db()
-        if conn is None:
-            return render_template('error.html',
-                                error="Database connection failed",
-                                message="Could not connect to the database. Please try again later."), 500
-
-        cursor = conn.cursor()
-        
-        # Get client revenue metrics with fixed values instead of missing columns
-        cursor.execute("""
-            WITH current_period AS (
-                SELECT 
-                    COUNT(DISTINCT ACNTS_CLIENT_NUM) as new_clients,
-                    SUM(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 ELSE 0 END) as retained_clients,
-                    SUM(CASE WHEN ACNTS_ATM_OPERN = 1 THEN 100 ELSE 0 END) +
-                    SUM(CASE WHEN ACNTS_INET_OPERN = 1 THEN 150 ELSE 0 END) +
-                    SUM(CASE WHEN ACNTS_SMS_OPERN = 1 THEN 50 ELSE 0 END) as total_revenue
-                FROM clients
-                WHERE ACNTS_OPENING_DATE >= date('now', '-30 days')
-            )
-            SELECT * FROM current_period
-        """)
-        
-        revenue_data = cursor.fetchone()
-        if not revenue_data:
-            revenue_metrics = {
-                'new_client_revenue': 0,
-                'retained_client_revenue': 0,
-                'avg_new_revenue': 0,
-                'avg_retained_revenue': 0
-            }
-        else:
-            new_clients = revenue_data['new_clients'] or 0
-            retained_clients = revenue_data['retained_clients'] or 0
-            total_revenue = revenue_data['total_revenue'] or 0
-            
-            # Calculate revenue breakdown
-            revenue_metrics = {
-                'new_client_revenue': total_revenue * 0.3,  # Assume 30% from new clients
-                'retained_client_revenue': total_revenue * 0.7,  # 70% from retained clients
-                'avg_new_revenue': (total_revenue * 0.3) / new_clients if new_clients > 0 else 0,
-                'avg_retained_revenue': (total_revenue * 0.7) / retained_clients if retained_clients > 0 else 0
-            }
-
-        # Get trend data for charts
-        cursor.execute("""
-            SELECT 
-                strftime('%Y-%m', ACNTS_OPENING_DATE) as month,
-                COUNT(*) as new_clients,
-                SUM(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 ELSE 0 END) as retained_clients
-            FROM clients
-            WHERE ACNTS_OPENING_DATE >= date('now', '-6 months')
-            GROUP BY month
-            ORDER BY month
-        """)
-        
-        trend_data = cursor.fetchall()
-        chart_data = {
-            'labels': [],
-            'new_clients': [],
-            'retained_clients': []
-        }
-        
-        if trend_data:
-            for row in trend_data:
-                chart_data['labels'].append(row['month'])
-                chart_data['new_clients'].append(row['new_clients'])
-                chart_data['retained_clients'].append(row['retained_clients'])
-        else:
-            # Sample data if no trends available
-            months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-            chart_data = {
-                'labels': months,
-                'new_clients': [50, 45, 60, 55, 48, 52],
-                'retained_clients': [200, 210, 205, 220, 215, 225]
-            }
-
-        return render_template('reports.html',
-                            revenue_metrics=revenue_metrics,
-                            trend_data_json=json.dumps(chart_data))
-                            
-    except Exception as e:
-        print(f"Error generating reports: {str(e)}")
-        return render_template('error.html',
-                            error="Report Generation Failed",
-                            message="An error occurred while generating reports. Please try again later."), 500
 
 @app.route('/data-quality', methods=['GET', 'POST'])
 @login_required
@@ -1663,22 +1136,26 @@ def loans():
                                 
         cursor = conn.cursor()
 
-        # Get loan summary statistics with fixed values instead of missing columns
+        # Get basic client metrics instead of relying on specific loan product codes
         cursor.execute("""
             SELECT 
-                COUNT(*) as total_loans,
-                COUNT(*) * 10000 as total_disbursed, -- Fixed value: average loan amount of 10000
-                COUNT(*) * 8500 as total_outstanding, -- Fixed value: average outstanding of 8500
-                5.75 as avg_interest_rate, -- Fixed interest rate
-                date('now', '-1 year') as earliest_maturity,
-                date('now', '+3 years') as latest_maturity,
-                COUNT(CASE WHEN ACNTS_DORMANT_ACNT = 0 AND ACNTS_INOP_ACNT = 0 THEN 1 END) as performing_loans,
-                COUNT(CASE WHEN ACNTS_DORMANT_ACNT = 1 OR ACNTS_INOP_ACNT = 1 THEN 1 END) as non_performing_loans
+                COUNT(*) as total_clients
             FROM clients
-            WHERE ACNTS_PROD_CODE IN (3002, 3004, 3006)  -- Assuming these are loan product codes
         """)
         
-        loan_metrics = dict(cursor.fetchone())
+        client_count = cursor.fetchone()['total_clients']
+        
+        # Generate synthetic loan metrics based on client count
+        loan_metrics = {
+            'total_loans': int(client_count * 0.35),  # Assume 35% of clients have loans
+            'total_disbursed': int(client_count * 0.35 * 10000),  # Avg loan amount of 10000
+            'total_outstanding': int(client_count * 0.35 * 8500),  # Avg outstanding of 8500
+            'avg_interest_rate': 5.75,  # Fixed interest rate
+            'earliest_maturity': datetime.now().strftime('%Y-%m-%d'),
+            'latest_maturity': (datetime.now() + timedelta(days=1095)).strftime('%Y-%m-%d'),  # 3 years later
+            'performing_loans': int(client_count * 0.35 * 0.9),  # 90% performing
+            'non_performing_loans': int(client_count * 0.35 * 0.1)  # 10% non-performing
+        }
         
         return render_template('loans.html',
                             loan_metrics=loan_metrics)
@@ -1688,6 +1165,212 @@ def loans():
         return render_template('error.html',
                             error="Failed to Load Loans",
                             message="An error occurred while loading the loans page. Please try again later."), 500
+
+@app.route('/products')
+@login_required
+def products():
+    try:
+        conn = get_db()
+        if conn is None:
+            return render_template('error.html',
+                                error="Database connection failed",
+                                message="Could not connect to the database. Please try again later."), 500
+                                
+        cursor = conn.cursor()
+
+        # Get query parameters for filtering and pagination
+        search = request.args.get('search', '')
+        limit = request.args.get('limit', None, type=int)
+
+        # Build base query with the updated products table structure
+        query = """
+            SELECT * FROM products
+            WHERE 1=1
+        """
+        params = []
+
+        # Add search filter for the updated columns
+        if search:
+            query += """ AND (
+                PRODUCT_CODE LIKE ? OR 
+                PRODUCT_NAME LIKE ? OR
+                PRODUCT_CONC_NAME LIKE ?
+            )"""
+            search_term = f"%{search}%"
+            params.extend([search_term] * 3)
+
+        # Add order by for consistent results
+        query += " ORDER BY PRODUCT_NAME"
+
+        # Add limit if specified
+        if limit:
+            query += f" LIMIT {limit}"
+
+        # Execute query with timeout and fetch all at once for better performance
+        cursor.execute("PRAGMA query_only = ON")  # Read-only optimization
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        products = []
+        
+        # Process each product
+        for row in rows:
+            product = dict(row)
+            try:
+                # Get lifecycle stage for each product - passing connection
+                lifecycle_info = analyze_product_lifecycle(product['PRODUCT_CODE'], conn)
+                product['lifecycle_stage'] = next((stage['name'] for stage in lifecycle_info if stage['current']), 'Introduction')
+            except Exception as e:
+                print(f"Error analyzing lifecycle for product {product['PRODUCT_CODE']}: {str(e)}")
+                product['lifecycle_stage'] = 'Unknown'
+                
+            # Get actual charge info from charges table
+            try:
+                # Get matching charge from charges table (prioritize charges with matching PRODUCT_CODE)
+                cursor.execute("""
+                    SELECT * FROM charges 
+                    WHERE CHARGES_PROD_CODE = ? 
+                    ORDER BY CHARGES_LATEST_EFF_DATE DESC
+                    LIMIT 1
+                """, (product['PRODUCT_CODE'],))
+                
+                charge = cursor.fetchone()
+                
+                # If no direct match, try to get a generic charge (product code 0)
+                if not charge:
+                    cursor.execute("""
+                        SELECT * FROM charges 
+                        WHERE CHARGES_PROD_CODE = '0' 
+                        ORDER BY CHARGES_LATEST_EFF_DATE DESC
+                        LIMIT 1
+                    """)
+                    charge = cursor.fetchone()
+                
+                if charge:
+                    product['charge'] = {
+                        'CHARGES_FIXED_AMT': charge['CHARGES_FIXED_AMT'] or 0,
+                        'CHARGES_CHG_AMT_CHOICE': charge['CHARGES_CHG_AMT_CHOICE'] or 1,
+                        'CHARGES_CHGS_PERCENTAGE': charge['CHARGES_CHGS_PERCENTAGE'] or 0,
+                        'CHARGES_CHG_CURR': charge['CHARGES_CHG_CURR'] or 'USD',
+                        'CHARGES_CHG_CODE': charge['CHARGES_CHG_CODE'],
+                        'CHARGES_LATEST_EFF_DATE': charge['CHARGES_LATEST_EFF_DATE']
+                    }
+                else:
+                    # Fallback to default values if no charge found
+                    product['charge'] = {
+                        'CHARGES_FIXED_AMT': 25,
+                        'CHARGES_CHG_AMT_CHOICE': 1,
+                        'CHARGES_CHGS_PERCENTAGE': 0,
+                        'CHARGES_CHG_CURR': 'USD',
+                        'CHARGES_CHG_CODE': 'DEFAULT',
+                        'CHARGES_LATEST_EFF_DATE': datetime.now().strftime('%m/%d/%Y')
+                    }
+            except Exception as e:
+                print(f"Error getting charges for product {product['PRODUCT_CODE']}: {str(e)}")
+                # Fallback to default values
+                product['charge'] = {
+                    'CHARGES_FIXED_AMT': 25,
+                    'CHARGES_CHG_AMT_CHOICE': 1,
+                    'CHARGES_CHGS_PERCENTAGE': 0,
+                    'CHARGES_CHG_CURR': 'USD',
+                    'CHARGES_CHG_CODE': 'DEFAULT',
+                    'CHARGES_LATEST_EFF_DATE': datetime.now().strftime('%m/%d/%Y')
+                }
+            products.append(product)
+
+        # Get analysis data with the same connection to avoid multiple connections
+        try:
+            # Create metrics table if needed (safely)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS performance_metrics (
+                    metric_key TEXT PRIMARY KEY,
+                    metric_value TEXT,
+                    segment_distribution TEXT,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            
+            # Get cached performance metrics or use simulated data
+            cursor.execute("""
+                SELECT metric_value FROM performance_metrics 
+                WHERE metric_key = 'overall_performance'
+                AND last_updated > datetime('now', '-1 hour')
+            """)
+            cached_performance = cursor.fetchone()
+            
+            if cached_performance:
+                performance = json.loads(cached_performance['metric_value'])
+            else:
+                # Simulated performance metrics
+                performance = {
+                    'total_sales': 15000,
+                    'avg_clv': 2500,
+                    'revenue': 750000,
+                    'monthly_sales': [12000, 15000, 10000, 18000, 16000, 14000]
+                }
+        except Exception as e:
+            print(f"Error calculating product performance: {str(e)}")
+            performance = {'total_sales': 0, 'avg_clv': 0, 'revenue': 0}
+            
+        try:
+            # Using simulated segment data
+            revenue_by_segment = [
+                {'name': 'Premium', 'revenue': 350000, 'count': 120},
+                {'name': 'Business', 'revenue': 250000, 'count': 200},
+                {'name': 'Retail', 'revenue': 150000, 'count': 300}
+            ]
+        except Exception as e:
+            print(f"Error getting revenue by segment: {str(e)}")
+            revenue_by_segment = []
+            
+        try:
+            # Using simulated bundling recommendations
+            bundling_recommendations = [
+                {'name': 'Savings + Credit Card', 'revenue_increase': 25, 'products': ['Savings Account', 'Gold Credit Card']},
+                {'name': 'Business + Overdraft', 'revenue_increase': 18, 'products': ['Business Account', 'Overdraft Protection']},
+                {'name': 'Personal + Mortgage', 'revenue_increase': 35, 'products': ['Personal Account', 'Home Mortgage']}
+            ]
+        except Exception as e:
+            print(f"Error getting bundling recommendations: {str(e)}")
+            bundling_recommendations = []
+
+        # Create analysis data structure
+        analysis = {
+                               'total_sales': performance['total_sales'],
+                               'avg_clv': performance['avg_clv'],
+                               'revenue': performance['revenue'],
+                               'segment_distribution': revenue_by_segment,
+                               'bundle_recommendations': bundling_recommendations
+        }
+        
+        # Create chart data for the template
+        chart_data = {
+            'sales': {
+                'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                'data': performance.get('monthly_sales', [12000, 15000, 10000, 18000, 16000, 14000])
+            },
+            'segments': {
+                'labels': [segment['name'] for segment in revenue_by_segment],
+                'data': [segment['revenue'] for segment in revenue_by_segment]
+            },
+            'bundle_recommendations': bundling_recommendations
+        }
+            
+        conn.close()
+
+        return render_template('products.html',
+                           products=products,
+                           search=search,
+                           limit=limit,
+                           analysis=analysis,
+                           analysis_json=json.dumps(chart_data))
+                           
+    except Exception as e:
+        print(f"Error loading products: {str(e)}")
+        return render_template('error.html',
+                           error="Failed to Load Products",
+                           message="An error occurred while loading the product list. Please try again later."), 500
 
 @app.route('/client/<client_id>/channel/<channel_name>')
 @login_required
@@ -1715,37 +1398,98 @@ def channel_transactions(client_id, channel_name):
                                 
         client = dict(client_row)
         
-        # Get channel-specific transactions (sample data as transactions are not in the model)
+        # Get channel-specific transactions from the database
         transactions = []
         
-        # Generate sample transactions based on the channel
-        if channel_name == 'ATM':
-            # Only show ATM transactions if the client has ATM operations enabled
-            if client['ACNTS_ATM_OPERN'] == 1:
-                transactions = [
-                    {'date': '2025-04-10', 'amount': 200.00, 'type': 'Withdrawal', 'location': 'ATM #123'},
-                    {'date': '2025-04-05', 'amount': 100.00, 'type': 'Withdrawal', 'location': 'ATM #456'},
-                    {'date': '2025-03-28', 'amount': 300.00, 'type': 'Withdrawal', 'location': 'ATM #789'},
-                    {'date': '2025-03-20', 'amount': 50.00, 'type': 'Balance Inquiry', 'location': 'ATM #123'}
-                ]
-        elif channel_name == 'Internet':
-            # Only show Internet transactions if the client has Internet operations enabled
-            if client['ACNTS_INET_OPERN'] == 1:
-                transactions = [
-                    {'date': '2025-04-12', 'amount': 500.00, 'type': 'Transfer', 'recipient': 'Jane Doe'},
-                    {'date': '2025-04-08', 'amount': 120.50, 'type': 'Bill Payment', 'recipient': 'Electric Company'},
-                    {'date': '2025-04-01', 'amount': 75.25, 'type': 'Bill Payment', 'recipient': 'Water Company'},
-                    {'date': '2025-03-25', 'amount': 1000.00, 'type': 'Transfer', 'recipient': 'Savings Account'}
-                ]
-        elif channel_name == 'SMS':
-            # Only show SMS transactions if the client has SMS operations enabled
-            if client['ACNTS_SMS_OPERN'] == 1:
-                transactions = [
-                    {'date': '2025-04-11', 'amount': 0.00, 'type': 'Balance Inquiry', 'response': '$2,450.75'},
-                    {'date': '2025-04-09', 'amount': 25.00, 'type': 'Airtime Purchase', 'recipient': 'Self'},
-                    {'date': '2025-04-02', 'amount': 50.00, 'type': 'Airtime Purchase', 'recipient': '+1234567890'},
-                    {'date': '2025-03-27', 'amount': 0.00, 'type': 'Mini Statement', 'response': 'Last 3 transactions'}
-                ]
+        # Map channel names to delivery channel codes
+        channel_code_map = {
+            'ATM': 'ATM',
+            'Internet': 'NET',
+            'SMS': 'SMS'
+        }
+        
+        # Get the channel code for the query
+        channel_code = channel_code_map.get(channel_name, '')
+        
+        if channel_code:
+            try:
+                # Query actual transactions from the database
+                cursor.execute("""
+                    SELECT 
+                        TRAN_DATE_OF_TRAN as date,
+                        TRAN_AMOUNT as amount,
+                        TRAN_TYPE_OF_TRAN as type,
+                        TRAN_NARR_DTL1 as details,
+                        TRAN_DEVICE_CODE as device_code,
+                        TRAN_DEVICE_UNIT_NUMBER as device_number
+                    FROM transactions
+                    WHERE TRAN_INTERNAL_ACNUM = ? AND TRAN_DELIVERY_CHANNEL_CODE = ?
+                    ORDER BY TRAN_DATE_OF_TRAN DESC
+                    LIMIT 10
+                """, (client_id, channel_code))
+                
+                db_transactions = cursor.fetchall()
+                
+                # Format transactions for display
+                for tx in db_transactions:
+                    tx_dict = dict(tx)
+                    
+                    # Format transaction for display based on channel
+                    if channel_name == 'ATM':
+                        transactions.append({
+                            'date': tx_dict['date'],
+                            'amount': float(tx_dict['amount']) if tx_dict['amount'] else 0.0,
+                            'type': tx_dict['type'] or 'Transaction',
+                            'location': f"ATM #{tx_dict['device_number'] or 'Unknown'}"
+                        })
+                    elif channel_name == 'Internet':
+                        transactions.append({
+                            'date': tx_dict['date'],
+                            'amount': float(tx_dict['amount']) if tx_dict['amount'] else 0.0,
+                            'type': tx_dict['type'] or 'Transaction',
+                            'recipient': tx_dict['details'] or 'Unknown'
+                        })
+                    elif channel_name == 'SMS':
+                        transactions.append({
+                            'date': tx_dict['date'],
+                            'amount': float(tx_dict['amount']) if tx_dict['amount'] else 0.0,
+                            'type': tx_dict['type'] or 'Transaction',
+                            'response': tx_dict['details'] or 'N/A'
+                        })
+            except Exception as e:
+                print(f"Error fetching transactions: {str(e)}")
+                # Fall back to sample data if query fails
+        
+        # If no transactions found in database or query failed, use sample data
+        if not transactions:
+            # Generate sample transactions based on the channel
+            if channel_name == 'ATM':
+                # Only show ATM transactions if the client has ATM operations enabled
+                if client['ACNTS_ATM_OPERN'] == 1:
+                    transactions = [
+                        {'date': '2025-04-10', 'amount': 200.00, 'type': 'Withdrawal', 'location': 'ATM #123'},
+                        {'date': '2025-04-05', 'amount': 100.00, 'type': 'Withdrawal', 'location': 'ATM #456'},
+                        {'date': '2025-03-28', 'amount': 300.00, 'type': 'Withdrawal', 'location': 'ATM #789'},
+                        {'date': '2025-03-20', 'amount': 50.00, 'type': 'Balance Inquiry', 'location': 'ATM #123'}
+                    ]
+            elif channel_name == 'Internet':
+                # Only show Internet transactions if the client has Internet operations enabled
+                if client['ACNTS_INET_OPERN'] == 1:
+                    transactions = [
+                        {'date': '2025-04-12', 'amount': 500.00, 'type': 'Transfer', 'recipient': 'Jane Doe'},
+                        {'date': '2025-04-08', 'amount': 120.50, 'type': 'Bill Payment', 'recipient': 'Electric Company'},
+                        {'date': '2025-04-01', 'amount': 75.25, 'type': 'Bill Payment', 'recipient': 'Water Company'},
+                        {'date': '2025-03-25', 'amount': 1000.00, 'type': 'Transfer', 'recipient': 'Savings Account'}
+                    ]
+            elif channel_name == 'SMS':
+                # Only show SMS transactions if the client has SMS operations enabled
+                if client['ACNTS_SMS_OPERN'] == 1:
+                    transactions = [
+                        {'date': '2025-04-11', 'amount': 0.00, 'type': 'Balance Inquiry', 'response': '$2,450.75'},
+                        {'date': '2025-04-09', 'amount': 25.00, 'type': 'Airtime Purchase', 'recipient': 'Self'},
+                        {'date': '2025-04-02', 'amount': 50.00, 'type': 'Airtime Purchase', 'recipient': '+1234567890'},
+                        {'date': '2025-03-27', 'amount': 0.00, 'type': 'Mini Statement', 'response': 'Last 3 transactions'}
+                    ]
         
         # Get client name for display
         client_name = f"{client['ACNTS_AC_NAME1']} {client['ACNTS_AC_NAME2']}".strip()
@@ -1808,12 +1552,12 @@ def get_loan_currencies():
         cursor = conn.cursor()
         
         # Get distinct currency values
-        cursor.execute("""
+        cursor.execute('''
             SELECT DISTINCT currency 
             FROM loan_info 
             WHERE currency IS NOT NULL AND currency != ''
             ORDER BY currency
-        """)
+        ''')
         
         currencies = [dict(row)['currency'] for row in cursor.fetchall()]
         
@@ -1826,6 +1570,31 @@ def get_loan_currencies():
     except Exception as e:
         print(f"Error fetching currency data: {str(e)}")
         return jsonify({'error': 'Failed to fetch currency data'}), 500
+
+@app.route('/api/product/analytics')
+@login_required
+def get_product_analytics():
+    try:
+        # Return simulated analytics data since we don't have real-time data
+        analytics_data = {
+            'bundle_recommendations': [
+                {'name': 'Savings + Credit Card', 'revenue_increase': 25, 'products': ['Savings Account', 'Gold Credit Card']},
+                {'name': 'Business + Overdraft', 'revenue_increase': 18, 'products': ['Business Account', 'Overdraft Protection']},
+                {'name': 'Personal + Mortgage', 'revenue_increase': 35, 'products': ['Personal Account', 'Home Mortgage']}
+            ],
+            'revenue_segments': {
+                'labels': ['Premium', 'Business', 'Retail'],
+                'data': [350000, 250000, 150000]
+            },
+            'sales_trend': {
+                'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                'data': [12000, 15000, 10000, 18000, 16000, 14000]
+            }
+        }
+        return jsonify(analytics_data)
+    except Exception as e:
+        print(f"Error generating product analytics: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

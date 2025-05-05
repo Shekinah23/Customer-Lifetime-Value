@@ -21,21 +21,33 @@ class TransactionPatternAnalyzer:
         
         query = """
         SELECT 
-            t.transaction_id,
-            t.client_id,
-            t.transaction_date,
-            t.amount,
-            t.transaction_type,
-            t.channel,
-            c.ACNTS_AC_TYPE,
+            t.TRAN_ENTITY_NUM,
+            t.TRAN_BRN_CODE,
+            t.TRAN_DATE_OF_TRAN,
+            t.TRAN_INTERNAL_ACNUM,
+            t.TRAN_AMOUNT,
+            t.TRAN_TYPE_OF_TRAN,
+            t.TRAN_DELIVERY_CHANNEL_CODE,
+            t.TRAN_DB_CR_FLG,
+            t.TRAN_PROD_CODE,
             c.ACNTS_PROD_CODE
         FROM transactions t
-        JOIN clients c ON t.client_id = c.ACNTS_CLIENT_NUM
-        WHERE t.transaction_date >= ?
+        JOIN clients c ON t.TRAN_INTERNAL_ACNUM = c.ACNTS_CLIENT_NUM
+        WHERE t.TRAN_DATE_OF_TRAN >= ?
         """
         
         df = pd.read_sql_query(query, conn, params=[cutoff_date])
         conn.close()
+        
+        # Rename columns to maintain compatibility with existing code
+        df = df.rename(columns={
+            'TRAN_ENTITY_NUM': 'transaction_id',
+            'TRAN_INTERNAL_ACNUM': 'client_id',
+            'TRAN_DATE_OF_TRAN': 'transaction_date',
+            'TRAN_AMOUNT': 'amount',
+            'TRAN_TYPE_OF_TRAN': 'transaction_type',
+            'TRAN_DELIVERY_CHANNEL_CODE': 'channel'
+        })
         
         df['transaction_date'] = pd.to_datetime(df['transaction_date'])
         return df

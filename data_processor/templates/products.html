@@ -169,13 +169,23 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {% if product.charge %}
-                                        {% if product.charge.CHARGES_CHG_AMT_CHOICE == 1 %}
-                                            {{ product.charge.CHARGES_FIXED_AMT }} {{ product.charge.CHARGES_CHG_CURR }} (Fixed)
-                                        {% elif product.charge.CHARGES_CHG_AMT_CHOICE == 2 %}
-                                            {{ product.charge.CHARGES_CHGS_PERCENTAGE }}% (Percentage)
-                                        {% elif product.charge.CHARGES_CHG_AMT_CHOICE == 3 %}
-                                            Slab Based
-                                        {% endif %}
+                                        <div class="flex flex-col">
+                                            <div class="font-semibold">
+                                                {% if product.charge.CHARGES_CHG_AMT_CHOICE == 1 %}
+                                                    {{ product.charge.CHARGES_CHG_CURR }} {{ product.charge.CHARGES_FIXED_AMT|round(2) }} (Fixed)
+                                                {% elif product.charge.CHARGES_CHG_AMT_CHOICE == 2 %}
+                                                    {{ product.charge.CHARGES_CHGS_PERCENTAGE|round(2) }}% (Percentage)
+                                                {% elif product.charge.CHARGES_CHG_AMT_CHOICE == 3 %}
+                                                    Slab Based
+                                                {% endif %}
+                                            </div>
+                                            <div class="text-xs text-gray-600 mt-1">
+                                                Code: {{ product.charge.CHARGES_CHG_CODE }}
+                                            </div>
+                                            <div class="text-xs text-gray-600">
+                                                Effective: {{ product.charge.CHARGES_LATEST_EFF_DATE }}
+                                            </div>
+                                        </div>
                                     {% else %}
                                         No charge
                                     {% endif %}
@@ -215,7 +225,12 @@
 
                 <!-- Revenue by Segment -->
                 <div class="bg-white rounded-lg shadow-lg p-6">
-                    <h3 class="text-xl font-bold mb-4" style="color
+                    <h3 class="text-xl font-bold mb-4" style="color: var(--navy-blue);">Revenue by Segment</h3>
+                    <div class="relative h-64">
+                        <canvas id="segmentRevenueChart"></canvas>
+                    </div>
+                </div>
+
                 <!-- Product Bundling -->
                 <div class="bg-white rounded-lg shadow-lg p-6">
                     <h3 class="text-xl font-bold mb-4" style="color: var(--navy-blue);">Bundling Recommendations</h3>
@@ -309,10 +324,25 @@
         const analysisData = JSON.parse('{{ analysis|tojson|safe }}');
         const chartData = JSON.parse('{{ analysis_json|safe }}');
         
+        // Function to safely initialize a chart
+        function initializeChart(canvasId, chartConfig) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) {
+                console.warn(`Canvas element with ID '${canvasId}' not found`);
+                return null;
+            }
+            
+            try {
+                const ctx = canvas.getContext('2d');
+                return new Chart(ctx, chartConfig);
+            } catch (error) {
+                console.error(`Error initializing chart '${canvasId}':`, error);
+                return null;
+            }
+        }
 
         // Product Sales Chart
-        const salesChart = 
-        new Chart(document.getElementById('productSalesChart').getContext('2d'), {
+        const salesChart = initializeChart('productSalesChart', {
             type: 'line',
             data: {
                 labels: chartData.sales.labels,
@@ -358,8 +388,7 @@
         });
 
         // Segment Revenue Chart
-        const segmentChart = 
-        new Chart(document.getElementById('segmentRevenueChart').getContext('2d'), {
+        const segmentChart = initializeChart('segmentRevenueChart', {
             type: 'doughnut',
             data: {
                 labels: chartData.segments.labels,
@@ -390,7 +419,7 @@
         });
 
         // Bundling Chart
-        const bundlingChart = new Chart(document.getElementById('bundlingChart').getContext('2d'), {
+        const bundlingChart = initializeChart('bundlingChart', {
             type: 'bar',
             data: {
                 labels: chartData.bundle_recommendations.map(bundle => bundle.name),
@@ -436,21 +465,21 @@
                 }
                 
                 // Update bundling chart
-                if (data.bundle_recommendations && data.bundle_recommendations.length > 0) {
+                if (bundlingChart && data.bundle_recommendations && data.bundle_recommendations.length > 0) {
                     bundlingChart.data.labels = data.bundle_recommendations.map(bundle => bundle.name);
                     bundlingChart.data.datasets[0].data = data.bundle_recommendations.map(bundle => bundle.revenue_increase);
                     bundlingChart.update();
                 }
                 
                 // Update segment revenue chart
-                if (data.revenue_segments) {
+                if (segmentChart && data.revenue_segments) {
                     segmentChart.data.labels = data.revenue_segments.labels;
                     segmentChart.data.datasets[0].data = data.revenue_segments.data;
                     segmentChart.update();
                 }
                 
                 // Update sales chart
-                if (data.sales_trend) {
+                if (salesChart && data.sales_trend) {
                     salesChart.data.labels = data.sales_trend.labels;
                     salesChart.data.datasets[0].data = data.sales_trend.data;
                     salesChart.update();
